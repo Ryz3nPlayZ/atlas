@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ace-atlas"
+version = "0.1.0"
+description = "ACE-Atlas: a hybrid recurrent-memory-MoE language model research codebase."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "torch>=2.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "ruff>=0.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ace_atlas"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
