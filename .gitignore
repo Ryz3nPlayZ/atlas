@@ -15,4 +15,4 @@ checkpoints/
 artifacts/
 logs/
 wandb/
-
+configs/dataset_manifest.json

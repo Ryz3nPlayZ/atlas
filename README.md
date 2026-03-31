@@ -29,6 +29,7 @@ ace-atlas/
 
 ## Documents
 
+- [Project Dossier](docs/PROJECT_DOSSIER.md)
 - [Architecture Spec](docs/ARCHITECTURE_SPEC.md)
 - [Execution Roadmap](docs/ROADMAP.md)
 - [Cloud Training Prep](docs/CLOUD_PREP.md)
