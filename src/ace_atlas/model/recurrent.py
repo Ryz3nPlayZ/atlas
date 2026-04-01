@@ -75,3 +75,43 @@ class BootstrapRecurrentMixer(nn.Module):
         )
 
         return self.dropout(self.out_proj(outputs)), RecurrentState(hidden=recurrent_state)
+
+
+class FusedGRUMixer(nn.Module):
+    """A CUDA-friendly recurrent mixer that delegates the scan to PyTorch GRU kernels."""
+
+    def __init__(self, model_dim: int, config: RecurrentConfig) -> None:
+        super().__init__()
+        self.hidden_size = config.state_dim * config.expansion_factor
+        self.in_proj = nn.Linear(model_dim, self.hidden_size)
+        self.gru = nn.GRU(
+            input_size=self.hidden_size,
+            hidden_size=self.hidden_size,
+            num_layers=1,
+            batch_first=True,
+        )
+        self.out_proj = nn.Linear(self.hidden_size, model_dim)
+        self.dropout = nn.Dropout(config.dropout)
+
+    def initial_state(self, batch_size: int, device: torch.device, dtype: torch.dtype) -> RecurrentState:
+        return RecurrentState(hidden=torch.zeros(batch_size, self.hidden_size, device=device, dtype=dtype))
+
+    def forward(self, hidden: Tensor, state: RecurrentState | None = None) -> tuple[Tensor, RecurrentState]:
+        batch, _, _ = hidden.shape
+        if state is None:
+            state = self.initial_state(batch, hidden.device, hidden.dtype)
+        if hidden.is_cuda:
+            self.gru.flatten_parameters()
+
+        projected = self.in_proj(hidden)
+        outputs, recurrent_state = self.gru(projected, state.hidden.unsqueeze(0))
+        outputs = self.out_proj(outputs)
+        return self.dropout(outputs), RecurrentState(hidden=recurrent_state.squeeze(0))
+
+
+def build_recurrent_mixer(model_dim: int, config: RecurrentConfig) -> nn.Module:
+    if config.kind == "xlstm_bootstrap":
+        return BootstrapRecurrentMixer(model_dim, config)
+    if config.kind == "gru_fused":
+        return FusedGRUMixer(model_dim, config)
+    raise ValueError(f"Unsupported recurrent.kind: {config.kind}")

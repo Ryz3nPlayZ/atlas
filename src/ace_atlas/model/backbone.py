@@ -11,7 +11,7 @@ from ace_atlas.model.arbiter import ArbiterOutput, MemoryAction, MemoryArbiter
 from ace_atlas.model.attention import LocalCausalSelfAttention
 from ace_atlas.model.memory import BoundedMemory, MemoryReadResult, MemoryState
 from ace_atlas.model.moe import MoEAux, SparseMoE
-from ace_atlas.model.recurrent import BootstrapRecurrentMixer, RecurrentState
+from ace_atlas.model.recurrent import RecurrentState, build_recurrent_mixer
 from ace_atlas.model.types import ModelOutput
 
 
@@ -27,7 +27,7 @@ class HybridBlock(nn.Module):
         self.recurrent_norm = nn.LayerNorm(config.model_dim, eps=config.norm_epsilon)
         self.attention_norm = nn.LayerNorm(config.model_dim, eps=config.norm_epsilon)
         self.moe_norm = nn.LayerNorm(config.model_dim, eps=config.norm_epsilon)
-        self.recurrent = BootstrapRecurrentMixer(config.model_dim, config.recurrent)
+        self.recurrent = build_recurrent_mixer(config.model_dim, config.recurrent)
         self.attention = (
             LocalCausalSelfAttention(config.model_dim, config.attention) if use_attention else None
         )
