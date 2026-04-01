@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import random
+import time
 from typing import Iterator
 
 import torch
@@ -11,6 +12,7 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from ace_atlas.config import ACEAtlasConfig
+from ace_atlas.experiment import build_model, collect_system_metadata, count_parameters, format_parameter_count
 from ace_atlas.model.backbone import ACEAtlasModel
 from ace_atlas.model.dense_baseline import DenseCausalTransformer
 from ace_atlas.train.config import TrainingConfig
@@ -46,12 +48,14 @@ class Trainer:
         self.training_config = training_config
         set_seed(training_config.seed)
         self.device = resolve_device(training_config.device)
-        self.model: nn.Module = MODEL_REGISTRY[model_name](model_config).to(self.device)
+        self.model: nn.Module = build_model(model_name, model_config).to(self.device)
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=training_config.learning_rate,
             weight_decay=training_config.weight_decay,
         )
+        self.model_stats = count_parameters(self.model)
+        self.system_metadata = collect_system_metadata(self.device)
 
     def write_run_metadata(self, output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -59,6 +63,17 @@ class Trainer:
             "model_name": self.model_name,
             "model_config": self.model_config.to_dict(),
             "training_config": self.training_config.to_dict(),
+            "model_stats": {
+                "parameter_count": self.model_stats["total"],
+                "parameter_count_human": format_parameter_count(self.model_stats["total"]),
+                "trainable_parameter_count": self.model_stats["trainable"],
+                "trainable_parameter_count_human": format_parameter_count(self.model_stats["trainable"]),
+                "non_embedding_parameter_count": self.model_stats["non_embedding"],
+                "non_embedding_parameter_count_human": format_parameter_count(
+                    self.model_stats["non_embedding"]
+                ),
+            },
+            "system": self.system_metadata,
         }
         (output_dir / "run.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -119,6 +134,7 @@ class Trainer:
         totals: dict[str, float] = {"loss": 0.0, "lm_loss": 0.0, "mtp_loss": 0.0}
         batches_seen = 0
         max_batches = self.training_config.validation_batches
+        started = time.perf_counter()
 
         with torch.no_grad():
             for batches_seen, batch in enumerate(dataloader, start=1):
@@ -134,6 +150,7 @@ class Trainer:
         metrics = {name: total / batches_seen for name, total in totals.items()}
         metrics["step"] = float(step)
         metrics["phase"] = "val"
+        metrics["elapsed_time_sec"] = time.perf_counter() - started
         self.model.train()
         return metrics
 
@@ -189,6 +206,11 @@ class Trainer:
     def train(self) -> list[dict[str, float]]:
         output_dir = Path(self.training_config.output_dir) / self.training_config.run_name
         self.write_run_metadata(output_dir)
+        print(
+            f"[{self.model_name}] device={self.system_metadata['device_name']} "
+            f"params={format_parameter_count(self.model_stats['total'])} "
+            f"trainable={format_parameter_count(self.model_stats['trainable'])}"
+        )
 
         train_loader, val_loader = self.build_dataloaders()
         train_batches = self.cycle_batches(train_loader)
@@ -201,11 +223,16 @@ class Trainer:
         self.model.train()
         for step in range(start_step + 1, self.training_config.steps + 1):
             batch = next(train_batches)
+            started = time.perf_counter()
             losses = self.run_step(batch, training=True)
+            step_time = time.perf_counter() - started
 
             record = {name: float(value.detach().cpu().item()) for name, value in losses.items()}
             record["step"] = float(step)
             record["phase"] = "train"
+            record["step_time_sec"] = step_time
+            tokens_per_step = self.training_config.batch_size * self.training_config.sequence_length
+            record["tokens_per_sec"] = tokens_per_step / step_time if step_time > 0 else 0.0
             metrics.append(record)
 
             if step % self.training_config.log_every == 0:
@@ -213,7 +240,9 @@ class Trainer:
                     f"[{self.model_name}] step={step} "
                     f"loss={record['loss']:.4f} "
                     f"lm={record['lm_loss']:.4f} "
-                    f"mtp={record['mtp_loss']:.4f}"
+                    f"mtp={record['mtp_loss']:.4f} "
+                    f"step_time={record['step_time_sec']:.3f}s "
+                    f"tok/s={record['tokens_per_sec']:.1f}"
                 )
 
             self.maybe_run_validation(val_loader, step=step, metrics=metrics)

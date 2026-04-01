@@ -2,7 +2,7 @@
 
 Date: March 31, 2026
 
-For the operational TinyStories workflow, start with [FIRST_REAL_TINYSTORIES_RUN.md](./FIRST_REAL_TINYSTORIES_RUN.md).
+For the operational TinyStories workflow, start with [FIRST_REAL_TINYSTORIES_RUN.md](./FIRST_REAL_TINYSTORIES_RUN.md) and [INTERPRETING_FIRST_RESULTS.md](./INTERPRETING_FIRST_RESULTS.md).
 
 ## Local Machine Reality
 

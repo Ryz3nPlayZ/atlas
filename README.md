@@ -34,8 +34,9 @@ What it does not support yet:
 If you are trying to get the first non-toy run working, use these in order:
 
 1. [First Real TinyStories Run](docs/FIRST_REAL_TINYSTORIES_RUN.md)
-2. [Cloud Training Prep](docs/CLOUD_PREP.md)
-3. [Execution Roadmap](docs/ROADMAP.md)
+2. [How To Interpret First Results](docs/INTERPRETING_FIRST_RESULTS.md)
+3. [Cloud Training Prep](docs/CLOUD_PREP.md)
+4. [Execution Roadmap](docs/ROADMAP.md)
 
 Reference docs:
 
@@ -62,6 +63,13 @@ python -m pip install -e '.[dev,data]'
 python scripts/prepare_tinystories.py --output-dir data/tinystories
 ```
 
+Report parameter counts for a preset:
+
+```bash
+python scripts/report_model_stats.py --model-name dense_baseline --config configs/dense_50m.json
+python scripts/report_model_stats.py --model-name ace_atlas --config configs/hybrid_50m.json
+```
+
 Run the dense baseline:
 
 ```bash
@@ -79,6 +87,29 @@ python scripts/train_hybrid.py \
   --train-config configs/train_tinystories_smoke.json \
   --run-name tinystories_hybrid_smoke
 ```
+
+Compare two completed runs:
+
+```bash
+python scripts/compare_runs.py \
+  artifacts/tinystories_dense_smoke \
+  artifacts/tinystories_hybrid_smoke
+```
+
+## Preset Size Tiers
+
+These model config pairs are intended to be roughly budget-matched:
+
+- `configs/dense_tiny_debug.json`: 26.52M
+- `configs/hybrid_tiny_debug.json`: 29.51M
+- `configs/dense_50m.json`: 48.66M
+- `configs/hybrid_50m.json`: 51.08M
+- `configs/dense_100m.json`: 91.38M
+- `configs/hybrid_100m.json`: 94.92M
+- `configs/dense_300m.json`: 295.83M
+- `configs/hybrid_300m.json`: 299.54M
+
+For the first serious low-budget run, start with the `~50M` pair and `configs/train_tinystories_first_compare.json`.
 
 Artifacts are written under `artifacts/<run_name>/` with:
 

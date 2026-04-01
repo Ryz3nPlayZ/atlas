@@ -1,0 +1,51 @@
+{
+  "vocab_size": 50257,
+  "model_dim": 288,
+  "num_layers": 8,
+  "attention_every_n": 4,
+  "max_position_embeddings": 8192,
+  "dropout": 0.0,
+  "norm_epsilon": 1e-05,
+  "mtp_horizon": 2,
+  "attention": {
+    "window_size": 2048,
+    "num_heads": 8,
+    "num_kv_heads": 4,
+    "dropout": 0.0,
+    "use_bias": false
+  },
+  "recurrent": {
+    "kind": "xlstm_bootstrap",
+    "state_dim": 288,
+    "expansion_factor": 2,
+    "dropout": 0.0
+  },
+  "moe": {
+    "enabled": true,
+    "num_shared_experts": 1,
+    "num_routed_experts": 4,
+    "top_k": 2,
+    "hidden_dim": 1152,
+    "dropout": 0.0
+  },
+  "memory": {
+    "enabled": true,
+    "episodic_slots": 64,
+    "semantic_slots": 32,
+    "key_dim": 288,
+    "value_dim": 288,
+    "read_top_k": 4,
+    "max_writes_per_chunk": 2
+  },
+  "arbiter": {
+    "enabled": true,
+    "hidden_dim": 288,
+    "cost_weight": 0.05
+  },
+  "escalation": {
+    "enabled": true,
+    "uncertainty_threshold": 0.65,
+    "max_deliberation_steps": 2,
+    "max_tool_calls": 2
+  }
+}

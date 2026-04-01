@@ -14,6 +14,8 @@ The target is simple:
 
 This is not the final model recipe. It is the first clean low-budget real-data workflow.
 
+For result interpretation after the runs finish, see [INTERPRETING_FIRST_RESULTS.md](./INTERPRETING_FIRST_RESULTS.md).
+
 ## 1. Kaggle Prep
 
 In a Kaggle notebook:
@@ -73,6 +75,12 @@ python scripts/run_benchmark_verifier.py
 
 ## 4. Run The Dense Baseline
 
+Check the parameter count first:
+
+```bash
+python scripts/report_model_stats.py --model-name dense_baseline --config configs/dense_50m.json
+```
+
 Small real-data smoke:
 
 ```bash
@@ -80,6 +88,15 @@ python scripts/train_dense_baseline.py \
   --config configs/dense_small.json \
   --train-config configs/train_tinystories_smoke.json \
   --run-name tinystories_dense_smoke
+```
+
+First serious low-budget comparison run:
+
+```bash
+python scripts/train_dense_baseline.py \
+  --config configs/dense_50m.json \
+  --train-config configs/train_tinystories_first_compare.json \
+  --run-name tinystories_dense_50m
 ```
 
 Longer low-budget T4 comparison run:
@@ -93,6 +110,12 @@ python scripts/train_dense_baseline.py \
 
 ## 5. Run The Hybrid Baseline
 
+Check the parameter count first:
+
+```bash
+python scripts/report_model_stats.py --model-name ace_atlas --config configs/hybrid_50m.json
+```
+
 Small real-data smoke:
 
 ```bash
@@ -100,6 +123,15 @@ python scripts/train_hybrid.py \
   --config configs/hybrid_small.json \
   --train-config configs/train_tinystories_smoke.json \
   --run-name tinystories_hybrid_smoke
+```
+
+First serious low-budget comparison run:
+
+```bash
+python scripts/train_hybrid.py \
+  --config configs/hybrid_50m.json \
+  --train-config configs/train_tinystories_first_compare.json \
+  --run-name tinystories_hybrid_50m
 ```
 
 Longer low-budget T4 comparison run:
@@ -128,26 +160,34 @@ Expected outputs:
 - `checkpoints/latest.pt`: resumable checkpoint
 - `checkpoints/step_*.pt`: periodic checkpoints
 
+Compare two runs with one command:
+
+```bash
+python scripts/compare_runs.py \
+  artifacts/tinystories_dense_50m \
+  artifacts/tinystories_hybrid_50m
+```
+
 ## 7. Resume A Run
 
 Dense example:
 
 ```bash
 python scripts/train_dense_baseline.py \
-  --config configs/dense_small.json \
-  --train-config configs/train_tinystories_t4.json \
-  --run-name tinystories_dense_t4_resume \
-  --resume-from artifacts/tinystories_dense_t4/checkpoints/latest.pt
+  --config configs/dense_50m.json \
+  --train-config configs/train_tinystories_first_compare.json \
+  --run-name tinystories_dense_50m_resume \
+  --resume-from artifacts/tinystories_dense_50m/checkpoints/latest.pt
 ```
 
 Hybrid example:
 
 ```bash
 python scripts/train_hybrid.py \
-  --config configs/hybrid_small.json \
-  --train-config configs/train_tinystories_t4.json \
-  --run-name tinystories_hybrid_t4_resume \
-  --resume-from artifacts/tinystories_hybrid_t4/checkpoints/latest.pt
+  --config configs/hybrid_50m.json \
+  --train-config configs/train_tinystories_first_compare.json \
+  --run-name tinystories_hybrid_50m_resume \
+  --resume-from artifacts/tinystories_hybrid_50m/checkpoints/latest.pt
 ```
 
 ## 8. What To Compare First
@@ -163,11 +203,19 @@ For the first dense vs hybrid comparison, keep the recipe fixed except for the m
 
 Look at:
 
+- parameter count
 - train loss trend
 - validation loss trend
 - step time
+- tokens per second
 - checkpoint stability
 - GPU memory use
+
+Recommended first serious comparison:
+
+- dense: `configs/dense_50m.json`
+- hybrid: `configs/hybrid_50m.json`
+- train config: `configs/train_tinystories_first_compare.json`
 
 ## 9. Practical Scope
 

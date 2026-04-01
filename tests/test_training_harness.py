@@ -94,9 +94,16 @@ def test_trainer_supports_tokenized_validation_and_resume(tmp_path: Path) -> Non
     first_metrics = trainer.train()
 
     checkpoint_path = output_dir / "tokenized_dev" / "checkpoints" / "latest.pt"
+    run_path = output_dir / "tokenized_dev" / "run.json"
     assert checkpoint_path.exists()
     assert any(record["phase"] == "val" for record in first_metrics)
     assert [record["phase"] for record in first_metrics] == ["train", "val"]
+    assert "step_time_sec" in first_metrics[0]
+    assert "tokens_per_sec" in first_metrics[0]
+
+    run_payload = json.loads(run_path.read_text(encoding="utf-8"))
+    assert run_payload["model_stats"]["parameter_count"] > 0
+    assert "torch_version" in run_payload["system"]
 
     resumed_config = TrainingConfig(
         run_name="tokenized_dev",
