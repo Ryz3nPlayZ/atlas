@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import torch
+import torch.nn.functional as F
 from torch import Tensor, nn
 
 from ace_atlas.config import RecurrentConfig
@@ -11,6 +12,31 @@ from ace_atlas.config import RecurrentConfig
 @dataclass(slots=True)
 class RecurrentState:
     hidden: Tensor
+
+
+@torch.jit.script
+def _recurrent_scan(
+    projected: Tensor,
+    recurrent_state: Tensor,
+    state_proj_weight: Tensor,
+    state_proj_bias: Tensor,
+    state_update_weight: Tensor,
+    state_update_bias: Tensor,
+) -> tuple[Tensor, Tensor]:
+    batch, seq_len, projected_dim = projected.shape
+    inner_dim = projected_dim // 3
+    outputs = projected.new_empty((batch, seq_len, inner_dim))
+
+    for t in range(seq_len):
+        token_u, token_g, token_v = projected[:, t].chunk(3, dim=-1)
+        state_u, state_g = F.linear(recurrent_state, state_proj_weight, state_proj_bias).chunk(2, dim=-1)
+        candidate = torch.tanh(token_u + state_u)
+        gate = torch.sigmoid(token_g + state_g)
+        mixed = gate * candidate + (1.0 - gate) * torch.tanh(token_v)
+        recurrent_state = F.linear(mixed, state_update_weight, state_update_bias)
+        outputs[:, t] = mixed
+
+    return outputs, recurrent_state
 
 
 class BootstrapRecurrentMixer(nn.Module):
@@ -39,15 +65,13 @@ class BootstrapRecurrentMixer(nn.Module):
             state = self.initial_state(batch, hidden.device, hidden.dtype)
 
         projected = self.in_proj(hidden)
-        outputs = hidden.new_empty(batch, seq_len, projected.size(-1) // 3)
-        recurrent_state = state.hidden
-        for t in range(seq_len):
-            token_u, token_g, token_v = projected[:, t].chunk(3, dim=-1)
-            state_u, state_g = self.state_proj(recurrent_state).chunk(2, dim=-1)
-            candidate = torch.tanh(token_u + state_u)
-            gate = torch.sigmoid(token_g + state_g)
-            mixed = gate * candidate + (1.0 - gate) * torch.tanh(token_v)
-            recurrent_state = self.state_update(mixed)
-            outputs[:, t] = mixed
+        outputs, recurrent_state = _recurrent_scan(
+            projected,
+            state.hidden,
+            self.state_proj.weight,
+            self.state_proj.bias,
+            self.state_update.weight,
+            self.state_update.bias,
+        )
 
         return self.dropout(self.out_proj(outputs)), RecurrentState(hidden=recurrent_state)
