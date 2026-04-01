@@ -17,6 +17,9 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.6",
 ]
+data = [
+  "datasets>=2.20",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ace_atlas"]
@@ -27,4 +30,3 @@ target-version = "py311"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-

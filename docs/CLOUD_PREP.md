@@ -2,6 +2,8 @@
 
 Date: March 31, 2026
 
+For the operational TinyStories workflow, start with [FIRST_REAL_TINYSTORIES_RUN.md](./FIRST_REAL_TINYSTORIES_RUN.md).
+
 ## Local Machine Reality
 
 An i5-8210Y with integrated graphics is not a serious training environment for this project.
@@ -42,16 +44,17 @@ It is not useful for:
 - profiling recurrent and MoE kernels
 - long-context evaluation at realistic batch sizes
 - ablation sweeps
-- checkpointing and distributed orchestration
+- distributed orchestration
 
-## Recommended First Cloud Steps
+## Recommended Cloud Sequence
 
 1. Provision a small GPU instance first, not a large cluster.
 2. Install the package and dependencies.
 3. Run the dense baseline for a tiny synthetic smoke test.
 4. Run the hybrid model for the same smoke test.
-5. Confirm artifacts, checkpoints, and metrics are written correctly.
-6. Only then move to real corpora and larger contexts.
+5. Move to a tiny real-data TinyStories run.
+6. Confirm train and validation metrics plus checkpoints are written correctly.
+7. Only then increase run length or model size.
 
 ## Cloud Readiness Checklist
 
@@ -61,8 +64,8 @@ It is not useful for:
 - install `torch`
 - run `python scripts/train_dense_baseline.py --steps 2`
 - run `python scripts/train_hybrid.py --steps 2`
+- run the TinyStories smoke flow from `docs/FIRST_REAL_TINYSTORIES_RUN.md`
 
 ## Practical Rule
 
 Do not spend cloud money discovering local packaging bugs.
-

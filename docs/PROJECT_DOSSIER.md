@@ -233,25 +233,27 @@ As a result:
 
 - full runtime model execution was not verified locally,
 - training entrypoints were only validated to the point of clean failure when `torch` is absent,
-- and no real GPU-backed smoke training has yet been run from this repo.
+- and the original scaffold could not complete real GPU-backed runs until later Lightning validation work.
 
 ## 9. Current Known Limitations
 
 This is the most important status section in the entire project.
 
-The current training harness still uses a `synthetic random-token dataset`.
+The training harness now supports both:
+
+- `synthetic` random-token debug training
+- `tokenized` JSONL training on real corpora
 
 That means:
 
-- smoke training is possible once `torch` and a GPU are available,
-- but real pretraining is not yet wired up,
-- and no one should start a long cloud run expecting meaningful learning from actual text corpora.
+- smoke training remains available for bring-up,
+- first real-data TinyStories runs are now possible,
+- and the repository is ready for small dense vs hybrid comparisons on Lightning.
 
 Other limitations:
 
-- no checkpoint save/resume flow yet,
-- no held-out validation loop on real data,
 - no distributed training,
+- no mixed-precision or throughput tuning pass yet,
 - no real tokenizer beyond the minimal byte-level pipeline,
 - no long-context production kernels,
 - no serious benchmark loaders for standard public suites yet,
@@ -306,18 +308,19 @@ The ideal near-term ACE-Atlas system should eventually have:
 
 These are the highest-priority remaining tasks, in order.
 
-### Phase 1: Make Training Real
+### Phase 1: First Real Corpus Comparison
 
-The single most important engineering task is:
+The single most important next task is:
 
-`replace the random-token training dataset with a real manifest-backed token dataset`
+`run the first real TinyStories dense vs hybrid comparison and review the results`
 
 That includes:
 
-- reading tokenized corpus files instead of generating random tokens,
-- respecting train/validation splits,
-- batching real examples,
-- making the tokenizer/data path first-class in training.
+- preparing TinyStories into tokenized JSONL,
+- running the dense baseline on Lightning,
+- running the hybrid baseline on Lightning,
+- inspecting validation curves and checkpoints,
+- and deciding whether the current small-model recipe earns a longer low-budget run.
 
 ### Phase 2: Add Minimal Real Training Requirements
 
@@ -488,4 +491,3 @@ The next serious move is not more architecture writing.
 The next serious move is:
 
 `implement manifest-backed real-data training`
-

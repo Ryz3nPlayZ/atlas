@@ -1,69 +1,98 @@
 # ACE-Atlas
 
-ACE-Atlas is a research implementation of a `hybrid recurrent-memory-MoE` language model with verifier-driven reasoning.
+ACE-Atlas is a research codebase for a `hybrid recurrent-memory-MoE` language model with verifier-driven reasoning.
 
-The v1 thesis is narrow:
+The immediate project goal is practical, not speculative:
 
-- keep exact local attention where recall matters most,
-- move long-range context handling into a cheaper recurrent path,
-- use sparse experts for active capacity,
-- add bounded learned memory instead of brute-force context stuffing,
-- and escalate to executable reasoning only when the model is uncertain.
+- run a stable dense baseline,
+- run a stable hybrid baseline,
+- train both on a real small corpus,
+- and compare quality, speed, and training behavior before scaling.
 
-This repository is being built in phases. The current state is:
+## Current State
 
-- detailed architecture and roadmap docs,
-- a first-pass Python package scaffold,
-- bootstrap model modules for the backbone, memory, arbiter, and tools,
-- bootstrap training entrypoints and benchmark adapters.
+The repository now supports the first real-data training milestone:
+
+- dense and hybrid training entrypoints,
+- synthetic smoke training for fast bring-up,
+- tokenized JSONL training for real corpora,
+- config-driven train/validation split paths,
+- validation loss logging,
+- checkpoint save/resume,
+- tokenizer and manifest utilities,
+- benchmark smoke adapters for recall and verifier tasks.
+
+What it does not support yet:
+
+- distributed training,
+- large-scale data pipelines,
+- production inference,
+- or large-model orchestration.
+
+## Start Here
+
+If you are trying to get the first non-toy run working, use these in order:
+
+1. [First Real TinyStories Run](docs/FIRST_REAL_TINYSTORIES_RUN.md)
+2. [Cloud Training Prep](docs/CLOUD_PREP.md)
+3. [Execution Roadmap](docs/ROADMAP.md)
+
+Reference docs:
+
+- [Project Dossier](docs/PROJECT_DOSSIER.md)
+- [Architecture Spec](docs/ARCHITECTURE_SPEC.md)
 
 ## Repository Layout
 
 ```text
 ace-atlas/
+  configs/
   docs/
   scripts/
   src/ace_atlas/
   tests/
 ```
 
-## Documents
+## First Real-Data Commands
 
-- [Project Dossier](docs/PROJECT_DOSSIER.md)
-- [Architecture Spec](docs/ARCHITECTURE_SPEC.md)
-- [Execution Roadmap](docs/ROADMAP.md)
-- [Cloud Training Prep](docs/CLOUD_PREP.md)
+Prepare TinyStories:
 
-## Current Implementation Focus
+```bash
+python -m pip install -e '.[dev,data]'
+python scripts/prepare_tinystories.py --output-dir data/tinystories
+```
 
-The first implementation target is not the full research agenda. It is:
+Run the dense baseline:
 
-- hybrid backbone,
-- bounded memory,
-- memory arbiter,
-- verifier path,
-- benchmark harness.
+```bash
+python scripts/train_dense_baseline.py \
+  --config configs/dense_small.json \
+  --train-config configs/train_tinystories_smoke.json \
+  --run-name tinystories_dense_smoke
+```
 
-Deferred research bets include:
+Run the hybrid baseline:
 
-- full online plasticity,
-- NCA as the main backbone,
-- HDC as the main representation family,
-- full active inference control.
+```bash
+python scripts/train_hybrid.py \
+  --config configs/hybrid_small.json \
+  --train-config configs/train_tinystories_smoke.json \
+  --run-name tinystories_hybrid_smoke
+```
 
-## Status
+Artifacts are written under `artifacts/<run_name>/` with:
 
-The environment used to create this scaffold does not have `torch` installed, so the code has only been syntax-checked, not executed end-to-end.
+- `run.json`
+- `metrics.json`
+- `checkpoints/latest.pt`
 
-The following scripts run without `torch`:
+## Verification
 
-- `scripts/run_benchmark_recall.py`
-- `scripts/run_benchmark_verifier.py`
-- `scripts/build_manifest.py`
-- `scripts/tokenize_corpus.py`
-- `scripts/preflight_check.py`
+Fast checks that should work before a longer run:
 
-The following training scripts require `torch` and print a clear message if it is missing:
-
-- `scripts/train_dense_baseline.py`
-- `scripts/train_hybrid.py`
+```bash
+python scripts/preflight_check.py
+python scripts/run_benchmark_recall.py
+python scripts/run_benchmark_verifier.py
+pytest -q
+```

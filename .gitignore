@@ -13,6 +13,7 @@ dist/
 .DS_Store
 checkpoints/
 artifacts/
+data/
 logs/
 wandb/
 configs/dataset_manifest.json

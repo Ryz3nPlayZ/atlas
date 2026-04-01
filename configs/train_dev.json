@@ -3,12 +3,18 @@
   "steps": 10,
   "batch_size": 4,
   "sequence_length": 128,
+  "data_mode": "synthetic",
+  "train_data_path": null,
+  "val_data_path": null,
   "learning_rate": 0.0003,
   "weight_decay": 0.1,
   "grad_clip_norm": 1.0,
   "log_every": 1,
+  "validation_every": 0,
+  "validation_batches": 0,
+  "checkpoint_every": 0,
+  "resume_from": null,
   "output_dir": "artifacts",
   "seed": 7,
   "device": "cuda"
 }
-

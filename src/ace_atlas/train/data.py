@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from pathlib import Path
 
 import torch
 from torch import Tensor
@@ -42,3 +43,56 @@ def build_random_lm_dataloader(
     )
     return DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
+
+class TokenizedJsonlDataset(Dataset):
+    """Language-modeling dataset backed by tokenized JSONL records.
+
+    Each line is expected to contain a ``tokens`` array produced by
+    ``scripts/tokenize_corpus.py``.
+    """
+
+    def __init__(self, path: str | Path, sequence_length: int) -> None:
+        self.path = Path(path)
+        self.sequence_length = sequence_length
+        self.examples: list[Tensor] = []
+        self._load_examples()
+        if not self.examples:
+            raise ValueError(
+                f"No token sequences of length >= {sequence_length + 1} were found in {self.path}"
+            )
+
+    def _load_examples(self) -> None:
+        window = self.sequence_length + 1
+        for line_number, raw_line in enumerate(self.path.read_text(encoding="utf-8").splitlines(), start=1):
+            if not raw_line.strip():
+                continue
+            record = json.loads(raw_line)
+            tokens = record.get("tokens")
+            if not isinstance(tokens, list):
+                raise ValueError(f"Missing tokens list in {self.path}:{line_number}")
+            if len(tokens) < window:
+                continue
+            for start in range(0, len(tokens) - window + 1, self.sequence_length):
+                chunk = tokens[start : start + window]
+                if len(chunk) == window:
+                    self.examples.append(torch.tensor(chunk, dtype=torch.long))
+
+    def __len__(self) -> int:
+        return len(self.examples)
+
+    def __getitem__(self, index: int) -> dict[str, Tensor]:
+        tokens = self.examples[index]
+        return {
+            "input_ids": tokens[:-1],
+            "labels": tokens[1:],
+        }
+
+
+def build_tokenized_lm_dataloader(
+    path: str | Path,
+    sequence_length: int,
+    batch_size: int,
+    shuffle: bool,
+) -> DataLoader:
+    dataset = TokenizedJsonlDataset(path=path, sequence_length=sequence_length)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
