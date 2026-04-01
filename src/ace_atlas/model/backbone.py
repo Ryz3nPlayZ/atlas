@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import time
 
 import torch
 from torch import Tensor, nn
@@ -36,16 +37,34 @@ class HybridBlock(nn.Module):
         self,
         hidden: Tensor,
         recurrent_state: RecurrentState | None = None,
-    ) -> tuple[Tensor, RecurrentState, BlockAux]:
+        collect_runtime_stats: bool = False,
+    ) -> tuple[Tensor, RecurrentState, BlockAux, dict[str, float] | None]:
+        timings = {"recurrent": 0.0, "attention": 0.0, "moe": 0.0} if collect_runtime_stats else None
+
+        start = time.perf_counter() if collect_runtime_stats else 0.0
         recurrent_out, recurrent_state = self.recurrent(self.recurrent_norm(hidden), recurrent_state)
+        if collect_runtime_stats:
+            if hidden.is_cuda:
+                torch.cuda.synchronize(hidden.device)
+            timings["recurrent"] += time.perf_counter() - start
         hidden = hidden + recurrent_out
 
         if self.attention is not None:
+            start = time.perf_counter() if collect_runtime_stats else 0.0
             hidden = hidden + self.attention(self.attention_norm(hidden))
+            if collect_runtime_stats:
+                if hidden.is_cuda:
+                    torch.cuda.synchronize(hidden.device)
+                timings["attention"] += time.perf_counter() - start
 
+        start = time.perf_counter() if collect_runtime_stats else 0.0
         moe_out, moe_aux = self.moe(self.moe_norm(hidden))
+        if collect_runtime_stats:
+            if hidden.is_cuda:
+                torch.cuda.synchronize(hidden.device)
+            timings["moe"] += time.perf_counter() - start
         hidden = hidden + moe_out
-        return hidden, recurrent_state, BlockAux(moe=moe_aux)
+        return hidden, recurrent_state, BlockAux(moe=moe_aux), timings
 
 
 class ACEAtlasModel(nn.Module):
@@ -120,7 +139,9 @@ class ACEAtlasModel(nn.Module):
         self,
         input_ids: Tensor,
         memory_state: MemoryState | None = None,
+        collect_runtime_stats: bool = False,
     ) -> ModelOutput:
+        runtime_stats = {"recurrent": 0.0, "attention": 0.0, "moe": 0.0, "memory": 0.0, "heads": 0.0} if collect_runtime_stats else None
         hidden = self.dropout(self.embed_tokens(input_ids))
         recurrent_state: RecurrentState | None = None
         arbiter_outputs: list[ArbiterOutput] = []
@@ -128,16 +149,29 @@ class ACEAtlasModel(nn.Module):
         block_aux: list[BlockAux] = []
 
         for layer_idx, layer in enumerate(self.layers):
-            hidden, recurrent_state, aux = layer(hidden, recurrent_state)
+            hidden, recurrent_state, aux, block_timings = layer(
+                hidden,
+                recurrent_state,
+                collect_runtime_stats=collect_runtime_stats,
+            )
             block_aux.append(aux)
+            if runtime_stats is not None and block_timings is not None:
+                for key, value in block_timings.items():
+                    runtime_stats[key] += value
             if (layer_idx + 1) % self.memory_every_n_layers == 0:
+                start = time.perf_counter() if collect_runtime_stats else 0.0
                 hidden, memory_state = self._apply_memory_bus(
                     hidden,
                     memory_state,
                     arbiter_outputs=arbiter_outputs,
                     memory_reads=memory_reads,
                 )
+                if runtime_stats is not None:
+                    if hidden.is_cuda:
+                        torch.cuda.synchronize(hidden.device)
+                    runtime_stats["memory"] += time.perf_counter() - start
 
+        start = time.perf_counter() if collect_runtime_stats else 0.0
         hidden = self.final_norm(hidden)
         logits = self.lm_head(hidden)
         mtp_logits = None
@@ -146,6 +180,10 @@ class ACEAtlasModel(nn.Module):
 
         pooled = hidden.mean(dim=1)
         uncertainty = torch.sigmoid(self.uncertainty_head(pooled)).squeeze(-1)
+        if runtime_stats is not None:
+            if hidden.is_cuda:
+                torch.cuda.synchronize(hidden.device)
+            runtime_stats["heads"] += time.perf_counter() - start
         return ModelOutput(
             logits=logits,
             mtp_logits=mtp_logits,
@@ -154,4 +192,5 @@ class ACEAtlasModel(nn.Module):
             arbiter_outputs=arbiter_outputs,
             memory_reads=memory_reads,
             block_aux=block_aux,
+            runtime_stats=runtime_stats,
         )

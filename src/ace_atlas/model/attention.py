@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
@@ -38,6 +36,15 @@ class LocalCausalSelfAttention(nn.Module):
         self.k_proj = nn.Linear(model_dim, model_dim, bias=config.use_bias)
         self.v_proj = nn.Linear(model_dim, model_dim, bias=config.use_bias)
         self.out_proj = nn.Linear(model_dim, model_dim, bias=config.use_bias)
+        self._mask_cache: dict[tuple[int, str], Tensor] = {}
+
+    def get_local_causal_mask(self, seq_len: int, device: torch.device) -> Tensor:
+        key = (seq_len, str(device))
+        mask = self._mask_cache.get(key)
+        if mask is None:
+            mask = build_local_causal_mask(seq_len, self.window_size, device)
+            self._mask_cache[key] = mask
+        return mask
 
     def forward(self, hidden: Tensor) -> Tensor:
         batch, seq_len, _ = hidden.shape
@@ -45,7 +52,7 @@ class LocalCausalSelfAttention(nn.Module):
         k = self.k_proj(hidden).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(hidden).view(batch, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
 
-        mask = build_local_causal_mask(seq_len, self.window_size, hidden.device)
+        mask = self.get_local_causal_mask(seq_len, hidden.device)
         attn = F.scaled_dot_product_attention(
             q,
             k,
@@ -56,4 +63,3 @@ class LocalCausalSelfAttention(nn.Module):
         )
         attn = attn.transpose(1, 2).contiguous().view(batch, seq_len, self.model_dim)
         return self.out_proj(attn)
-

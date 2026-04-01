@@ -64,10 +64,18 @@ class SparseMoE(nn.Module):
         if self.shared_experts:
             shared_out = shared_out / len(self.shared_experts)
 
-        routed_outputs = torch.stack([expert(flat) for expert in self.routed_experts], dim=1)
-        gather_index = topk_indices.unsqueeze(-1).expand(-1, -1, dim)
-        selected = torch.gather(routed_outputs, dim=1, index=gather_index)
-        mixed = (selected * topk_probs.unsqueeze(-1)).sum(dim=1)
+        mixed = torch.zeros_like(flat)
+        for expert_idx, expert in enumerate(self.routed_experts):
+            expert_mask = (topk_indices == expert_idx).any(dim=-1)
+            if not torch.any(expert_mask):
+                continue
+            token_indices = expert_mask.nonzero(as_tuple=False).squeeze(-1)
+            expert_input = flat.index_select(0, token_indices)
+            expert_output = expert(expert_input)
+            expert_weights = (
+                topk_probs[token_indices] * (topk_indices[token_indices] == expert_idx).to(topk_probs.dtype)
+            ).sum(dim=-1, keepdim=True)
+            mixed.index_add_(0, token_indices, expert_output * expert_weights)
 
         output = (shared_out + mixed).reshape(batch, seq_len, dim)
         aux = MoEAux(
@@ -76,4 +84,3 @@ class SparseMoE(nn.Module):
             topk_probs=topk_probs.reshape(batch, seq_len, self.top_k),
         )
         return output, aux
-

@@ -51,7 +51,7 @@ class DenseCausalTransformer(nn.Module):
         )
         self.uncertainty_head = nn.Linear(config.model_dim, 1)
 
-    def forward(self, input_ids: Tensor) -> ModelOutput:
+    def forward(self, input_ids: Tensor, collect_runtime_stats: bool = False) -> ModelOutput:
         hidden = self.dropout(self.embed_tokens(input_ids))
         block_aux = []
         for layer in self.layers:
@@ -72,5 +72,5 @@ class DenseCausalTransformer(nn.Module):
             arbiter_outputs=[],
             memory_reads=[],
             block_aux=block_aux,
+            runtime_stats=None,
         )
-

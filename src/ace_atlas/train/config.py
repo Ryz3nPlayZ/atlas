@@ -19,6 +19,7 @@ class TrainingConfig:
     validation_every: int = 0
     validation_batches: int = 0
     checkpoint_every: int = 0
+    runtime_profile_every: int = 0
     resume_from: str | None = None
     output_dir: str = "artifacts"
     seed: int = 7

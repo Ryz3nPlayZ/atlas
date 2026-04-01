@@ -40,8 +40,9 @@ def test_summarize_run_dir_collects_comparison_fields(tmp_path: Path) -> None:
         json.dumps(
             [
                 {"phase": "train", "step": 1.0, "loss": 3.0, "step_time_sec": 0.5, "tokens_per_sec": 200.0},
+                {"phase": "train", "step": 1.5, "loss": 2.8, "step_time_sec": 0.4, "tokens_per_sec": 220.0, "peak_memory_mb": 512.0},
                 {"phase": "val", "step": 1.0, "loss": 2.5},
-                {"phase": "train", "step": 2.0, "loss": 2.0, "step_time_sec": 0.25, "tokens_per_sec": 400.0},
+                {"phase": "train", "step": 2.0, "loss": 2.0, "step_time_sec": 0.25, "tokens_per_sec": 400.0, "peak_memory_mb": 768.0},
                 {"phase": "val", "step": 2.0, "loss": 1.5},
             ]
         ),
@@ -57,5 +58,6 @@ def test_summarize_run_dir_collects_comparison_fields(tmp_path: Path) -> None:
     assert summary["best_validation_loss"] == 1.5
     assert summary["checkpoint_count"] == 2
     assert summary["resume_metadata_exists"] is True
-    assert summary["avg_step_time_sec"] == 0.375
-    assert summary["avg_tokens_per_sec"] == 300.0
+    assert summary["avg_step_time_sec"] == 0.3833333333333333
+    assert summary["avg_tokens_per_sec"] == 273.3333333333333
+    assert summary["max_peak_memory_mb"] == 768.0

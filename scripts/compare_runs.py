@@ -39,6 +39,7 @@ def print_summary(label: str, summary: dict[str, object]) -> None:
     print(f"  resume metadata: {summary['resume_metadata_exists']}")
     print(f"  avg step time (s): {summary['avg_step_time_sec']}")
     print(f"  avg tokens/sec: {summary['avg_tokens_per_sec']}")
+    print(f"  max peak memory (MB): {summary['max_peak_memory_mb']}")
 
 
 def main() -> None:

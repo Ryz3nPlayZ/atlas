@@ -13,6 +13,7 @@
   "validation_every": 100,
   "validation_batches": 20,
   "checkpoint_every": 100,
+  "runtime_profile_every": 100,
   "resume_from": null,
   "output_dir": "artifacts",
   "seed": 7,

@@ -115,10 +115,15 @@ class Trainer:
             for batch in dataloader:
                 yield batch
 
-    def run_step(self, batch: dict[str, Tensor], training: bool) -> dict[str, Tensor]:
+    def run_step(
+        self,
+        batch: dict[str, Tensor],
+        training: bool,
+        collect_runtime_profile: bool = False,
+    ) -> tuple[dict[str, Tensor], dict[str, float] | None]:
         input_ids = batch["input_ids"].to(self.device)
         labels = batch["labels"].to(self.device)
-        output = self.model(input_ids)
+        output = self.model(input_ids, collect_runtime_stats=collect_runtime_profile)
         losses = total_training_loss(output, labels)
 
         if training:
@@ -127,7 +132,7 @@ class Trainer:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.training_config.grad_clip_norm)
             self.optimizer.step()
 
-        return losses
+        return losses, output.runtime_stats
 
     def evaluate(self, dataloader: DataLoader, step: int) -> dict[str, float]:
         self.model.eval()
@@ -138,7 +143,7 @@ class Trainer:
 
         with torch.no_grad():
             for batches_seen, batch in enumerate(dataloader, start=1):
-                losses = self.run_step(batch, training=False)
+                losses, _ = self.run_step(batch, training=False)
                 for name, value in losses.items():
                     totals[name] += float(value.detach().cpu().item())
                 if max_batches and batches_seen >= max_batches:
@@ -223,8 +228,18 @@ class Trainer:
         self.model.train()
         for step in range(start_step + 1, self.training_config.steps + 1):
             batch = next(train_batches)
+            collect_runtime_profile = (
+                self.training_config.runtime_profile_every > 0
+                and step % self.training_config.runtime_profile_every == 0
+            )
+            if self.device.type == "cuda":
+                torch.cuda.reset_peak_memory_stats(self.device)
             started = time.perf_counter()
-            losses = self.run_step(batch, training=True)
+            losses, runtime_stats = self.run_step(
+                batch,
+                training=True,
+                collect_runtime_profile=collect_runtime_profile,
+            )
             step_time = time.perf_counter() - started
 
             record = {name: float(value.detach().cpu().item()) for name, value in losses.items()}
@@ -233,6 +248,11 @@ class Trainer:
             record["step_time_sec"] = step_time
             tokens_per_step = self.training_config.batch_size * self.training_config.sequence_length
             record["tokens_per_sec"] = tokens_per_step / step_time if step_time > 0 else 0.0
+            if self.device.type == "cuda":
+                record["peak_memory_mb"] = torch.cuda.max_memory_allocated(self.device) / (1024 * 1024)
+            if runtime_stats is not None:
+                for key, value in runtime_stats.items():
+                    record[f"runtime_{key}_sec"] = value
             metrics.append(record)
 
             if step % self.training_config.log_every == 0:

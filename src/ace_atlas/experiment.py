@@ -82,6 +82,7 @@ def summarize_run_dir(path: str | Path) -> dict[str, object]:
     train_tokens_per_sec = [
         record["tokens_per_sec"] for record in train_records if "tokens_per_sec" in record
     ]
+    peak_memory_values = [record["peak_memory_mb"] for record in train_records if "peak_memory_mb" in record]
 
     return {
         "run_dir": str(run_dir),
@@ -98,4 +99,5 @@ def summarize_run_dir(path: str | Path) -> dict[str, object]:
         "avg_tokens_per_sec": (
             sum(train_tokens_per_sec) / len(train_tokens_per_sec) if train_tokens_per_sec else None
         ),
+        "max_peak_memory_mb": max(peak_memory_values) if peak_memory_values else None,
     }

@@ -38,18 +38,16 @@ class BootstrapRecurrentMixer(nn.Module):
         if state is None:
             state = self.initial_state(batch, hidden.device, hidden.dtype)
 
-        outputs = []
+        projected = self.in_proj(hidden)
+        outputs = hidden.new_empty(batch, seq_len, projected.size(-1) // 3)
         recurrent_state = state.hidden
         for t in range(seq_len):
-            token = hidden[:, t]
-            token_u, token_g, token_v = self.in_proj(token).chunk(3, dim=-1)
+            token_u, token_g, token_v = projected[:, t].chunk(3, dim=-1)
             state_u, state_g = self.state_proj(recurrent_state).chunk(2, dim=-1)
             candidate = torch.tanh(token_u + state_u)
             gate = torch.sigmoid(token_g + state_g)
             mixed = gate * candidate + (1.0 - gate) * torch.tanh(token_v)
             recurrent_state = self.state_update(mixed)
-            outputs.append(mixed)
+            outputs[:, t] = mixed
 
-        stacked = torch.stack(outputs, dim=1)
-        return self.dropout(self.out_proj(stacked)), RecurrentState(hidden=recurrent_state)
-
+        return self.dropout(self.out_proj(outputs)), RecurrentState(hidden=recurrent_state)
