@@ -203,6 +203,10 @@ class Trainer:
         self.optimizer.load_state_dict(payload["optimizer_state_dict"])
         return int(payload.get("step", 0)), list(payload.get("metrics", []))
 
+    def initialize_from_checkpoint(self, checkpoint_path: str | Path) -> None:
+        payload = torch.load(checkpoint_path, map_location=self.device)
+        self.model.load_state_dict(payload["model_state_dict"])
+
     def maybe_run_validation(
         self,
         val_loader: DataLoader | None,
@@ -239,6 +243,9 @@ class Trainer:
         train_batches = self.cycle_batches(train_loader)
         metrics: list[dict[str, float]] = []
         start_step = 0
+
+        if self.training_config.init_from:
+            self.initialize_from_checkpoint(self.training_config.init_from)
 
         if self.training_config.resume_from:
             start_step, metrics = self.load_checkpoint(self.training_config.resume_from)

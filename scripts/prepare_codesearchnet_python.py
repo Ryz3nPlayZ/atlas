@@ -16,7 +16,7 @@ from ace_atlas.tokenizer.byte_level import ByteTokenizer
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Prepare CodeSearchNet Python code and tokenized JSONL for held-out evaluation."
+        description="Prepare CodeSearchNet Python code and tokenized JSONL for training or evaluation."
     )
     parser.add_argument("--output-dir", type=Path, default=ROOT / "data" / "code_search_net_python")
     parser.add_argument(
@@ -26,12 +26,13 @@ def parse_args() -> argparse.Namespace:
         choices=("func_code_string", "whole_func_string"),
         help="Dataset field to serialize and tokenize.",
     )
+    parser.add_argument("--train-limit", type=int, default=0, help="0 means full train split.")
     parser.add_argument("--validation-limit", type=int, default=0, help="0 means full validation split.")
     parser.add_argument("--test-limit", type=int, default=0, help="0 means full test split.")
     return parser.parse_args()
 
 
-def load_split(split: str):
+def load_split(split: str, limit: int):
     try:
         from datasets import load_dataset
     except ModuleNotFoundError as exc:
@@ -39,7 +40,8 @@ def load_split(split: str):
             "CodeSearchNet prep requires the optional 'data' dependencies. "
             "Install with: python -m pip install -e '.[data]'"
         ) from exc
-    return load_dataset("code_search_net", "python", split=split)
+    split_spec = f"{split}[:{limit}]" if limit else split
+    return load_dataset("code_search_net", "python", split=split_spec)
 
 
 def write_jsonl_split(dataset, output_path: Path, field: str, limit: int) -> int:
@@ -70,10 +72,10 @@ def write_tokenized_split(jsonl_path: Path, output_path: Path, tokenizer: ByteTo
 
 
 def prepare_split(split: str, field: str, limit: int, output_dir: Path, tokenizer: ByteTokenizer) -> tuple[int, int]:
-    dataset = load_split(split)
+    dataset = load_split(split, limit)
     jsonl_path = output_dir / f"{split}.jsonl"
     token_path = output_dir / f"{split}_tokens.jsonl"
-    count = write_jsonl_split(dataset, jsonl_path, field=field, limit=limit)
+    count = write_jsonl_split(dataset, jsonl_path, field=field, limit=0)
     token_count = write_tokenized_split(jsonl_path, token_path, tokenizer)
     return count, token_count
 
@@ -84,6 +86,7 @@ def main() -> None:
     tokenizer = ByteTokenizer()
 
     for split, limit in (
+        ("train", args.train_limit),
         ("validation", args.validation_limit),
         ("test", args.test_limit),
     ):

@@ -28,6 +28,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--validation-batches", type=int, default=None)
     parser.add_argument("--checkpoint-every", type=int, default=None)
     parser.add_argument("--resume-from", type=Path, default=None)
+    parser.add_argument("--init-from", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -70,6 +71,8 @@ def main() -> None:
         train_config.checkpoint_every = args.checkpoint_every
     if args.resume_from is not None:
         train_config.resume_from = str(args.resume_from)
+    if args.init_from is not None:
+        train_config.init_from = str(args.init_from)
     trainer = Trainer("ace_atlas", config, train_config)
     trainer.train()
 

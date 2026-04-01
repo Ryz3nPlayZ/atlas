@@ -169,3 +169,53 @@ def test_trainer_supports_gru_recurrent_core(tmp_path: Path) -> None:
 
     assert metrics[0]["phase"] == "train"
     assert metrics[-1]["phase"] == "val"
+
+
+def test_trainer_supports_init_from_checkpoint(tmp_path: Path) -> None:
+    train_path = tmp_path / "train.jsonl"
+    val_path = tmp_path / "val.jsonl"
+    output_dir = tmp_path / "artifacts"
+
+    write_tokenized_file(
+        train_path,
+        [
+            [1, 2, 3, 4, 5, 6, 7, 8, 9],
+            [11, 12, 13, 14, 15, 16, 17, 18, 19],
+        ],
+    )
+    write_tokenized_file(val_path, [[21, 22, 23, 24, 25, 26, 27, 28, 29]])
+
+    base_config = TrainingConfig(
+        run_name="base_ckpt",
+        steps=1,
+        batch_size=1,
+        sequence_length=4,
+        data_mode="tokenized",
+        train_data_path=str(train_path),
+        val_data_path=str(val_path),
+        checkpoint_every=1,
+        output_dir=str(output_dir),
+        device="cpu",
+    )
+    base_trainer = Trainer("ace_atlas", tiny_gru_model_config(), base_config)
+    base_trainer.train()
+
+    checkpoint_path = output_dir / "base_ckpt" / "checkpoints" / "latest.pt"
+
+    init_config = TrainingConfig(
+        run_name="init_ckpt",
+        steps=1,
+        batch_size=1,
+        sequence_length=4,
+        data_mode="tokenized",
+        train_data_path=str(train_path),
+        val_data_path=str(val_path),
+        init_from=str(checkpoint_path),
+        output_dir=str(output_dir),
+        device="cpu",
+    )
+    init_trainer = Trainer("ace_atlas", tiny_gru_model_config(), init_config)
+    metrics = init_trainer.train()
+
+    assert metrics[0]["phase"] == "train"
+    assert metrics[0]["step"] == 1.0

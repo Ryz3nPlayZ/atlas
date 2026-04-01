@@ -23,6 +23,7 @@ class TrainingConfig:
     checkpoint_every: int = 0
     runtime_profile_every: int = 0
     resume_from: str | None = None
+    init_from: str | None = None
     output_dir: str = "artifacts"
     seed: int = 7
     device: str = "cuda"
