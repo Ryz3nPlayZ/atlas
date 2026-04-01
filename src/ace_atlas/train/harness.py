@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 import random
 import time
@@ -49,10 +50,28 @@ class Trainer:
         set_seed(training_config.seed)
         self.device = resolve_device(training_config.device)
         self.model: nn.Module = build_model(model_name, model_config).to(self.device)
+        if isinstance(self.model, ACEAtlasModel):
+            self.model.enable_activation_checkpointing(training_config.activation_checkpointing)
         self.optimizer = AdamW(
             self.model.parameters(),
             lr=training_config.learning_rate,
             weight_decay=training_config.weight_decay,
+        )
+        self.micro_batch_size = training_config.micro_batch_size or training_config.batch_size
+        if training_config.batch_size % self.micro_batch_size != 0:
+            raise ValueError("batch_size must be divisible by micro_batch_size")
+        expected_accum = training_config.batch_size // self.micro_batch_size
+        if training_config.grad_accum_steps != expected_accum:
+            raise ValueError(
+                "grad_accum_steps must equal batch_size // micro_batch_size for a stable effective batch"
+            )
+        self.autocast_enabled = self.device.type == "cuda" and training_config.mixed_precision in {"fp16", "bf16"}
+        self.autocast_dtype = (
+            torch.float16 if training_config.mixed_precision == "fp16" else torch.bfloat16
+        )
+        self.grad_scaler = torch.amp.GradScaler(
+            "cuda",
+            enabled=self.device.type == "cuda" and training_config.mixed_precision == "fp16",
         )
         self.model_stats = count_parameters(self.model)
         self.system_metadata = collect_system_metadata(self.device)
@@ -83,7 +102,7 @@ class Trainer:
             train_loader = build_random_lm_dataloader(
                 vocab_size=self.model_config.vocab_size,
                 sequence_length=config.sequence_length,
-                batch_size=config.batch_size,
+                batch_size=self.micro_batch_size,
                 total_examples=config.steps * config.batch_size,
             )
             val_loader = None
@@ -97,7 +116,7 @@ class Trainer:
         train_loader = build_tokenized_lm_dataloader(
             path=config.train_data_path,
             sequence_length=config.sequence_length,
-            batch_size=config.batch_size,
+            batch_size=self.micro_batch_size,
             shuffle=True,
         )
         val_loader = None
@@ -105,7 +124,7 @@ class Trainer:
             val_loader = build_tokenized_lm_dataloader(
                 path=config.val_data_path,
                 sequence_length=config.sequence_length,
-                batch_size=config.batch_size,
+                batch_size=self.micro_batch_size,
                 shuffle=False,
             )
         return train_loader, val_loader
@@ -123,14 +142,13 @@ class Trainer:
     ) -> tuple[dict[str, Tensor], dict[str, float] | None]:
         input_ids = batch["input_ids"].to(self.device)
         labels = batch["labels"].to(self.device)
-        output = self.model(input_ids, collect_runtime_stats=collect_runtime_profile)
-        losses = total_training_loss(output, labels)
-
-        if training:
-            self.optimizer.zero_grad(set_to_none=True)
-            losses["loss"].backward()
-            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.training_config.grad_clip_norm)
-            self.optimizer.step()
+        with torch.autocast(
+            device_type=self.device.type,
+            dtype=self.autocast_dtype,
+            enabled=self.autocast_enabled,
+        ):
+            output = self.model(input_ids, collect_runtime_stats=collect_runtime_profile)
+            losses = total_training_loss(output, labels)
 
         return losses, output.runtime_stats
 
@@ -227,7 +245,6 @@ class Trainer:
 
         self.model.train()
         for step in range(start_step + 1, self.training_config.steps + 1):
-            batch = next(train_batches)
             collect_runtime_profile = (
                 self.training_config.runtime_profile_every > 0
                 and step % self.training_config.runtime_profile_every == 0
@@ -235,14 +252,39 @@ class Trainer:
             if self.device.type == "cuda":
                 torch.cuda.reset_peak_memory_stats(self.device)
             started = time.perf_counter()
-            losses, runtime_stats = self.run_step(
-                batch,
-                training=True,
-                collect_runtime_profile=collect_runtime_profile,
-            )
+            self.optimizer.zero_grad(set_to_none=True)
+            runtime_stats: dict[str, float] | None = None
+            aggregated_losses = {"loss": 0.0, "lm_loss": 0.0, "mtp_loss": 0.0}
+            for micro_step in range(self.training_config.grad_accum_steps):
+                batch = next(train_batches)
+                micro_losses, micro_runtime_stats = self.run_step(
+                    batch,
+                    training=False,
+                    collect_runtime_profile=collect_runtime_profile and micro_step == self.training_config.grad_accum_steps - 1,
+                )
+                loss = micro_losses["loss"] / self.training_config.grad_accum_steps
+                if self.grad_scaler.is_enabled():
+                    self.grad_scaler.scale(loss).backward()
+                else:
+                    loss.backward()
+                for name, value in micro_losses.items():
+                    aggregated_losses[name] += float(value.detach().cpu().item())
+                if micro_runtime_stats is not None:
+                    runtime_stats = micro_runtime_stats
+
+            if self.grad_scaler.is_enabled():
+                self.grad_scaler.unscale_(self.optimizer)
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.training_config.grad_clip_norm)
+            if self.grad_scaler.is_enabled():
+                self.grad_scaler.step(self.optimizer)
+                self.grad_scaler.update()
+            else:
+                self.optimizer.step()
             step_time = time.perf_counter() - started
 
-            record = {name: float(value.detach().cpu().item()) for name, value in losses.items()}
+            record = {
+                name: total / self.training_config.grad_accum_steps for name, total in aggregated_losses.items()
+            }
             record["step"] = float(step)
             record["phase"] = "train"
             record["step_time_sec"] = step_time

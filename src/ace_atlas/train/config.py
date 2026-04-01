@@ -8,6 +8,8 @@ class TrainingConfig:
     run_name: str = "dev"
     steps: int = 10
     batch_size: int = 4
+    micro_batch_size: int | None = None
+    grad_accum_steps: int = 1
     sequence_length: int = 128
     data_mode: str = "synthetic"
     train_data_path: str | None = None
@@ -24,6 +26,8 @@ class TrainingConfig:
     output_dir: str = "artifacts"
     seed: int = 7
     device: str = "cuda"
+    mixed_precision: str = "none"
+    activation_checkpointing: bool = False
 
     def to_dict(self) -> dict:
         return asdict(self)

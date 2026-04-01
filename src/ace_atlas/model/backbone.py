@@ -5,6 +5,7 @@ import time
 
 import torch
 from torch import Tensor, nn
+from torch.utils.checkpoint import checkpoint
 
 from ace_atlas.config import ACEAtlasConfig
 from ace_atlas.model.arbiter import ArbiterOutput, MemoryAction, MemoryArbiter
@@ -93,6 +94,24 @@ class ACEAtlasModel(nn.Module):
         self.memory_fuse = nn.Linear(config.model_dim, config.model_dim)
         self.arbiter = MemoryArbiter(config.model_dim, config.arbiter) if config.arbiter.enabled else None
         self.memory_every_n_layers = max(1, config.attention_every_n)
+        self.activation_checkpointing = False
+
+    def enable_activation_checkpointing(self, enabled: bool) -> None:
+        self.activation_checkpointing = enabled
+
+    def _run_layer_checkpointed(
+        self,
+        layer: HybridBlock,
+        hidden: Tensor,
+        recurrent_hidden: Tensor,
+    ) -> tuple[Tensor, Tensor]:
+        recurrent_state = RecurrentState(hidden=recurrent_hidden)
+        next_hidden, next_state, _, _ = layer(
+            hidden,
+            recurrent_state,
+            collect_runtime_stats=False,
+        )
+        return next_hidden, next_state.hidden
 
     def _apply_memory_bus(
         self,
@@ -149,11 +168,29 @@ class ACEAtlasModel(nn.Module):
         block_aux: list[BlockAux] = []
 
         for layer_idx, layer in enumerate(self.layers):
-            hidden, recurrent_state, aux, block_timings = layer(
-                hidden,
-                recurrent_state,
-                collect_runtime_stats=collect_runtime_stats,
+            use_checkpoint = (
+                self.activation_checkpointing
+                and self.training
+                and not collect_runtime_stats
             )
+            if use_checkpoint:
+                if recurrent_state is None:
+                    recurrent_state = layer.recurrent.initial_state(hidden.size(0), hidden.device, hidden.dtype)
+                hidden, recurrent_hidden = checkpoint(
+                    lambda h, r: self._run_layer_checkpointed(layer, h, r),
+                    hidden,
+                    recurrent_state.hidden,
+                    use_reentrant=True,
+                )
+                recurrent_state = RecurrentState(hidden=recurrent_hidden)
+                aux = BlockAux(moe=None)
+                block_timings = None
+            else:
+                hidden, recurrent_state, aux, block_timings = layer(
+                    hidden,
+                    recurrent_state,
+                    collect_runtime_stats=collect_runtime_stats,
+                )
             block_aux.append(aux)
             if runtime_stats is not None and block_timings is not None:
                 for key, value in block_timings.items():
