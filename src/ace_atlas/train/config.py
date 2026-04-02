@@ -24,6 +24,7 @@ class TrainingConfig:
     runtime_profile_every: int = 0
     resume_from: str | None = None
     init_from: str | None = None
+    init_strict: bool = True
     output_dir: str = "artifacts"
     seed: int = 7
     device: str = "cuda"

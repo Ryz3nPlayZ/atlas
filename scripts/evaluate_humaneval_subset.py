@@ -88,13 +88,19 @@ def greedy_generate(
 ) -> tuple[str, int, float]:
     token_ids = list(prompt.encode("utf-8"))
     generated = list(token_ids)
+    segment_ids = [0] * len(token_ids)
     start = time.perf_counter()
     with torch.no_grad():
         for _ in range(max_new_tokens):
             input_ids = torch.tensor([generated], dtype=torch.long, device=device)
-            output = model(input_ids)
+            if hasattr(model, "segment_embeddings") and getattr(model, "segment_embeddings") is not None:
+                segment_tensor = torch.tensor([segment_ids], dtype=torch.long, device=device)
+                output = model(input_ids, segment_ids=segment_tensor)
+            else:
+                output = model(input_ids)
             next_token = int(torch.argmax(output.logits[0, -1]).item())
             generated.append(next_token)
+            segment_ids.append(1)
             if next_token == ByteTokenizer.eos_token_id:
                 break
     elapsed = time.perf_counter() - start

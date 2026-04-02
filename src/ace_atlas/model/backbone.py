@@ -25,6 +25,7 @@ class HybridBlock(nn.Module):
     def __init__(self, config: ACEAtlasConfig, use_attention: bool) -> None:
         super().__init__()
         self.use_attention = use_attention
+        self.has_completion_adapter = config.completion_adapter_dim > 0
         self.recurrent_norm = nn.LayerNorm(config.model_dim, eps=config.norm_epsilon)
         self.attention_norm = nn.LayerNorm(config.model_dim, eps=config.norm_epsilon)
         self.moe_norm = nn.LayerNorm(config.model_dim, eps=config.norm_epsilon)
@@ -33,11 +34,18 @@ class HybridBlock(nn.Module):
             LocalCausalSelfAttention(config.model_dim, config.attention) if use_attention else None
         )
         self.moe = SparseMoE(config.model_dim, config.moe)
+        if self.has_completion_adapter:
+            self.completion_adapter_norm = nn.LayerNorm(config.model_dim, eps=config.norm_epsilon)
+            self.completion_adapter_down = nn.Linear(config.model_dim, config.completion_adapter_dim)
+            self.completion_adapter_up = nn.Linear(config.completion_adapter_dim, config.model_dim)
+            nn.init.zeros_(self.completion_adapter_up.weight)
+            nn.init.zeros_(self.completion_adapter_up.bias)
 
     def forward(
         self,
         hidden: Tensor,
         recurrent_state: RecurrentState | None = None,
+        segment_ids: Tensor | None = None,
         collect_runtime_stats: bool = False,
     ) -> tuple[Tensor, RecurrentState, BlockAux, dict[str, float] | None]:
         timings = {"recurrent": 0.0, "attention": 0.0, "moe": 0.0} if collect_runtime_stats else None
@@ -65,6 +73,12 @@ class HybridBlock(nn.Module):
                 torch.cuda.synchronize(hidden.device)
             timings["moe"] += time.perf_counter() - start
         hidden = hidden + moe_out
+
+        if self.has_completion_adapter and segment_ids is not None:
+            completion_mask = segment_ids.unsqueeze(-1).to(hidden.dtype)
+            adapter_hidden = self.completion_adapter_norm(hidden)
+            adapter_hidden = torch.nn.functional.silu(self.completion_adapter_down(adapter_hidden))
+            hidden = hidden + completion_mask * self.completion_adapter_up(adapter_hidden)
         return hidden, recurrent_state, BlockAux(moe=moe_aux), timings
 
 
@@ -73,6 +87,11 @@ class ACEAtlasModel(nn.Module):
         super().__init__()
         self.config = config
         self.embed_tokens = nn.Embedding(config.vocab_size, config.model_dim)
+        self.segment_embeddings = (
+            nn.Embedding(2, config.model_dim) if config.answer_span_embeddings else None
+        )
+        if self.segment_embeddings is not None:
+            nn.init.zeros_(self.segment_embeddings.weight)
         self.dropout = nn.Dropout(config.dropout)
         self.layers = nn.ModuleList(
             [
@@ -104,11 +123,13 @@ class ACEAtlasModel(nn.Module):
         layer: HybridBlock,
         hidden: Tensor,
         recurrent_hidden: Tensor,
+        segment_ids: Tensor,
     ) -> tuple[Tensor, Tensor]:
         recurrent_state = RecurrentState(hidden=recurrent_hidden)
         next_hidden, next_state, _, _ = layer(
             hidden,
             recurrent_state,
+            segment_ids=segment_ids,
             collect_runtime_stats=False,
         )
         return next_hidden, next_state.hidden
@@ -157,11 +178,14 @@ class ACEAtlasModel(nn.Module):
     def forward(
         self,
         input_ids: Tensor,
+        segment_ids: Tensor | None = None,
         memory_state: MemoryState | None = None,
         collect_runtime_stats: bool = False,
     ) -> ModelOutput:
         runtime_stats = {"recurrent": 0.0, "attention": 0.0, "moe": 0.0, "memory": 0.0, "heads": 0.0} if collect_runtime_stats else None
         hidden = self.dropout(self.embed_tokens(input_ids))
+        if self.segment_embeddings is not None and segment_ids is not None:
+            hidden = hidden + self.segment_embeddings(segment_ids)
         recurrent_state: RecurrentState | None = None
         arbiter_outputs: list[ArbiterOutput] = []
         memory_reads: list[MemoryReadResult] = []
@@ -176,10 +200,14 @@ class ACEAtlasModel(nn.Module):
             if use_checkpoint:
                 if recurrent_state is None:
                     recurrent_state = layer.recurrent.initial_state(hidden.size(0), hidden.device, hidden.dtype)
+                layer_segment_ids = segment_ids
+                if layer_segment_ids is None:
+                    layer_segment_ids = torch.zeros_like(input_ids)
                 hidden, recurrent_hidden = checkpoint(
-                    lambda h, r: self._run_layer_checkpointed(layer, h, r),
+                    lambda h, r, s: self._run_layer_checkpointed(layer, h, r, s),
                     hidden,
                     recurrent_state.hidden,
+                    layer_segment_ids,
                     use_reentrant=True,
                 )
                 recurrent_state = RecurrentState(hidden=recurrent_hidden)
@@ -189,6 +217,7 @@ class ACEAtlasModel(nn.Module):
                 hidden, recurrent_state, aux, block_timings = layer(
                     hidden,
                     recurrent_state,
+                    segment_ids=segment_ids,
                     collect_runtime_stats=collect_runtime_stats,
                 )
             block_aux.append(aux)

@@ -142,12 +142,22 @@ class Trainer:
     ) -> tuple[dict[str, Tensor], dict[str, float] | None]:
         input_ids = batch["input_ids"].to(self.device)
         labels = batch["labels"].to(self.device)
+        segment_ids = batch.get("segment_ids")
+        if segment_ids is not None:
+            segment_ids = segment_ids.to(self.device)
         with torch.autocast(
             device_type=self.device.type,
             dtype=self.autocast_dtype,
             enabled=self.autocast_enabled,
         ):
-            output = self.model(input_ids, collect_runtime_stats=collect_runtime_profile)
+            if segment_ids is not None and isinstance(self.model, ACEAtlasModel):
+                output = self.model(
+                    input_ids,
+                    segment_ids=segment_ids,
+                    collect_runtime_stats=collect_runtime_profile,
+                )
+            else:
+                output = self.model(input_ids, collect_runtime_stats=collect_runtime_profile)
             losses = total_training_loss(output, labels)
 
         return losses, output.runtime_stats
@@ -208,7 +218,19 @@ class Trainer:
 
     def initialize_from_checkpoint(self, checkpoint_path: str | Path) -> None:
         payload = torch.load(checkpoint_path, map_location=self.device)
-        self.model.load_state_dict(payload["model_state_dict"])
+        load_result = self.model.load_state_dict(
+            payload["model_state_dict"],
+            strict=self.training_config.init_strict,
+        )
+        if not self.training_config.init_strict:
+            if load_result.missing_keys:
+                print(
+                    f"[{self.model_name}] init_from missing_keys={len(load_result.missing_keys)}"
+                )
+            if load_result.unexpected_keys:
+                print(
+                    f"[{self.model_name}] init_from unexpected_keys={len(load_result.unexpected_keys)}"
+                )
 
     def maybe_run_validation(
         self,

@@ -66,6 +66,8 @@ class ACEAtlasConfig:
     dropout: float = 0.0
     norm_epsilon: float = 1e-5
     mtp_horizon: int = 2
+    answer_span_embeddings: bool = False
+    completion_adapter_dim: int = 0
     attention: AttentionConfig = field(default_factory=AttentionConfig)
     recurrent: RecurrentConfig = field(default_factory=RecurrentConfig)
     moe: MoEConfig = field(default_factory=MoEConfig)
@@ -87,6 +89,8 @@ class ACEAtlasConfig:
             dropout=data.get("dropout", 0.0),
             norm_epsilon=data.get("norm_epsilon", 1e-5),
             mtp_horizon=data.get("mtp_horizon", 2),
+            answer_span_embeddings=data.get("answer_span_embeddings", False),
+            completion_adapter_dim=data.get("completion_adapter_dim", 0),
             attention=AttentionConfig(**data.get("attention", {})),
             recurrent=RecurrentConfig(**data.get("recurrent", {})),
             moe=MoEConfig(**data.get("moe", {})),

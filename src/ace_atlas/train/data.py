@@ -92,12 +92,17 @@ class TokenizedJsonlDataset(Dataset):
     def __getitem__(self, index: int) -> dict[str, Tensor]:
         tokens, loss_mask = self.examples[index]
         labels = tokens[1:].clone()
+        segment_ids = None
         if loss_mask is not None:
             labels[~loss_mask[1:]] = -100
-        return {
+            segment_ids = loss_mask[:-1].to(torch.long)
+        batch = {
             "input_ids": tokens[:-1],
             "labels": labels,
         }
+        if segment_ids is not None:
+            batch["segment_ids"] = segment_ids
+        return batch
 
 
 def build_tokenized_lm_dataloader(

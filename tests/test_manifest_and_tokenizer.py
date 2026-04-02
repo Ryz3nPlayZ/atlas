@@ -62,3 +62,4 @@ def test_tokenized_jsonl_dataset_applies_loss_mask(tmp_path: Path) -> None:
 
     assert record["input_ids"].tolist() == [1, 2, 3, 4]
     assert record["labels"].tolist() == [-100, 3, 4, 5]
+    assert record["segment_ids"].tolist() == [0, 0, 1, 1]
