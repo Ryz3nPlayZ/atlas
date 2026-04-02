@@ -8,7 +8,7 @@ from ace_atlas.model.types import ModelOutput
 
 
 def language_model_loss(logits: Tensor, labels: Tensor) -> Tensor:
-    return F.cross_entropy(logits.reshape(-1, logits.size(-1)), labels.reshape(-1))
+    return F.cross_entropy(logits.reshape(-1, logits.size(-1)), labels.reshape(-1), ignore_index=-100)
 
 
 def multi_token_prediction_loss(mtp_logits: Tensor | None, labels: Tensor) -> Tensor:
@@ -23,7 +23,11 @@ def multi_token_prediction_loss(mtp_logits: Tensor | None, labels: Tensor) -> Te
             continue
         pred = mtp_logits[:, : seq_len - offset - 1, offset]
         target = labels[:, offset + 1 :]
-        total = total + F.cross_entropy(pred.reshape(-1, vocab), target.reshape(-1))
+        flat_target = target.reshape(-1)
+        valid = flat_target.ne(-100)
+        if not torch.any(valid):
+            continue
+        total = total + F.cross_entropy(pred.reshape(-1, vocab), flat_target, ignore_index=-100)
         count += 1
     if count == 0:
         return total
@@ -35,4 +39,3 @@ def total_training_loss(output: ModelOutput, labels: Tensor, mtp_weight: float =
     mtp = multi_token_prediction_loss(output.mtp_logits, labels)
     total = lm + mtp_weight * mtp
     return {"loss": total, "lm_loss": lm, "mtp_loss": mtp}
-

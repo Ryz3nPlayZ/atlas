@@ -75,7 +75,7 @@ def indent_block(text: str, indent: str = "    ") -> str:
     return "\n".join(f"{indent}{line}" if line.strip() else "" for line in text.splitlines())
 
 
-def build_mbpp_prompt_example(prompt: str, code: str) -> list[str]:
+def build_mbpp_prompt_example(prompt: str, code: str) -> list[dict[str, str]]:
     imports, signature, body = extract_imports_signature_body(code)
     if not signature or not body:
         return []
@@ -83,7 +83,6 @@ def build_mbpp_prompt_example(prompt: str, code: str) -> list[str]:
     if imports:
         prompt_style.extend(imports)
     prompt_style.append(signature)
-    prompt_style.append(indent_block(body))
 
     humaneval_style = []
     if imports:
@@ -92,12 +91,13 @@ def build_mbpp_prompt_example(prompt: str, code: str) -> list[str]:
     humaneval_style.append('    """')
     humaneval_style.append(f"    {prompt.strip()}")
     humaneval_style.append('    """')
-    humaneval_style.append(indent_block(body))
+    return [
+        {"prompt": "\n".join(prompt_style) + "\n    ", "completion": indent_block(body) + "\n"},
+        {"prompt": "\n".join(humaneval_style) + "\n    ", "completion": indent_block(body) + "\n"},
+    ]
 
-    return ["\n".join(prompt_style) + "\n", "\n".join(humaneval_style) + "\n"]
 
-
-def build_codesearchnet_prompt_example(code: str) -> str | None:
+def build_codesearchnet_prompt_example(code: str) -> dict[str, str] | None:
     imports, signature, body = extract_imports_signature_body(code)
     if not signature or not body:
         return None
@@ -105,15 +105,14 @@ def build_codesearchnet_prompt_example(code: str) -> str | None:
     if imports:
         lines.extend(imports)
     lines.append(signature)
-    lines.append(indent_block(body))
-    return "\n".join(lines) + "\n"
+    return {"prompt": "\n".join(lines) + "\n    ", "completion": indent_block(body) + "\n"}
 
 
-def write_jsonl(records: list[str], path: Path) -> int:
+def write_jsonl(records: list[dict[str, str]], path: Path) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        for text in records:
-            handle.write(json.dumps({"text": text}) + "\n")
+        for record in records:
+            handle.write(json.dumps(record) + "\n")
     return len(records)
 
 
@@ -123,8 +122,14 @@ def write_tokenized(jsonl_path: Path, token_path: Path, tokenizer: ByteTokenizer
         for line in source:
             if not line.strip():
                 continue
-            text = json.loads(line)["text"]
-            sink.write(json.dumps({"tokens": tokenizer.encode(text)}) + "\n")
+            record = json.loads(line)
+            prompt = record["prompt"]
+            completion = record["completion"]
+            prompt_tokens = list(prompt.encode("utf-8"))
+            completion_tokens = tokenizer.encode(completion)
+            tokens = prompt_tokens + completion_tokens
+            loss_mask = [0] * len(prompt_tokens) + [1] * len(completion_tokens)
+            sink.write(json.dumps({"tokens": tokens, "loss_mask": loss_mask}) + "\n")
             count += 1
     return count
 
@@ -134,8 +139,8 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     tokenizer = ByteTokenizer()
 
-    train_records: list[str] = []
-    val_records: list[str] = []
+    train_records: list[dict[str, str]] = []
+    val_records: list[dict[str, str]] = []
 
     mbpp_train = load_dataset_split("mbpp", "train", "sanitized")
     mbpp_val = load_dataset_split("mbpp", "validation", "sanitized")

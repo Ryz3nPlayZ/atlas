@@ -54,7 +54,7 @@ class TokenizedJsonlDataset(Dataset):
     def __init__(self, path: str | Path, sequence_length: int) -> None:
         self.path = Path(path)
         self.sequence_length = sequence_length
-        self.examples: list[Tensor] = []
+        self.examples: list[tuple[Tensor, Tensor | None]] = []
         self._load_examples()
         if not self.examples:
             raise ValueError(
@@ -70,21 +70,33 @@ class TokenizedJsonlDataset(Dataset):
             tokens = record.get("tokens")
             if not isinstance(tokens, list):
                 raise ValueError(f"Missing tokens list in {self.path}:{line_number}")
+            loss_mask = record.get("loss_mask")
+            if loss_mask is not None:
+                if not isinstance(loss_mask, list):
+                    raise ValueError(f"Missing loss_mask list in {self.path}:{line_number}")
+                if len(loss_mask) != len(tokens):
+                    raise ValueError(f"loss_mask length mismatch in {self.path}:{line_number}")
             if len(tokens) < window:
                 continue
             for start in range(0, len(tokens) - window + 1, self.sequence_length):
                 chunk = tokens[start : start + window]
                 if len(chunk) == window:
-                    self.examples.append(torch.tensor(chunk, dtype=torch.long))
+                    chunk_mask = None
+                    if loss_mask is not None:
+                        chunk_mask = torch.tensor(loss_mask[start : start + window], dtype=torch.bool)
+                    self.examples.append((torch.tensor(chunk, dtype=torch.long), chunk_mask))
 
     def __len__(self) -> int:
         return len(self.examples)
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
-        tokens = self.examples[index]
+        tokens, loss_mask = self.examples[index]
+        labels = tokens[1:].clone()
+        if loss_mask is not None:
+            labels[~loss_mask[1:]] = -100
         return {
             "input_ids": tokens[:-1],
-            "labels": tokens[1:],
+            "labels": labels,
         }
 
 

@@ -48,3 +48,17 @@ def test_tokenized_jsonl_dataset_builds_lm_examples(tmp_path: Path) -> None:
     assert second["labels"].tolist() == [11, 12, 13, 14]
     assert third["input_ids"].tolist() == [14, 15, 16, 17]
     assert third["labels"].tolist() == [15, 16, 17, 18]
+
+
+def test_tokenized_jsonl_dataset_applies_loss_mask(tmp_path: Path) -> None:
+    tokenized_path = tmp_path / "masked_tokens.jsonl"
+    tokenized_path.write_text(
+        '{"tokens": [1, 2, 3, 4, 5], "loss_mask": [0, 0, 1, 1, 1]}\n',
+        encoding="utf-8",
+    )
+
+    dataset = TokenizedJsonlDataset(tokenized_path, sequence_length=4)
+    record = dataset[0]
+
+    assert record["input_ids"].tolist() == [1, 2, 3, 4]
+    assert record["labels"].tolist() == [-100, 3, 4, 5]
