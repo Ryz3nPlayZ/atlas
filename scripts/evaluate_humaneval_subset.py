@@ -5,7 +5,6 @@ import json
 import subprocess
 import tempfile
 import time
-import textwrap
 from pathlib import Path
 import sys
 
@@ -20,15 +19,7 @@ if str(SRC) not in sys.path:
 from ace_atlas.config import ACEAtlasConfig
 from ace_atlas.experiment import build_model, count_parameters, format_parameter_count
 from ace_atlas.tokenizer.byte_level import ByteTokenizer
-
-
-STOP_MARKERS = (
-    "\ndef ",
-    "\nclass ",
-    "\nif __name__",
-    "\nassert ",
-    "\nprint(",
-)
+from code_eval_utils import normalize_body_completion, repair_body_completion, trim_completion
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,6 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-tasks", type=int, default=10)
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--timeout-sec", type=float, default=5.0)
+    parser.add_argument("--syntax-repair", action="store_true")
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
@@ -57,27 +49,6 @@ def load_tasks(max_tasks: int):
             "Install with: python -m pip install -e '.[data]'"
         ) from exc
     return load_dataset("openai_humaneval", split=f"test[:{max_tasks}]")
-
-
-def trim_completion(text: str) -> str:
-    for marker in STOP_MARKERS:
-        index = text.find(marker)
-        if index > 0:
-            text = text[:index]
-    return text.rstrip()
-
-
-def normalize_body_completion(text: str, indent: str = "    ") -> str:
-    text = trim_completion(text).replace("\r\n", "\n")
-    text = text.lstrip("\n")
-    if not text.strip():
-        return ""
-    body = textwrap.dedent(text).lstrip()
-    lines = body.splitlines()
-    while lines and not lines[-1].strip():
-        lines.pop()
-    normalized = "\n".join(f"{indent}{line}" if line.strip() else "" for line in lines)
-    return normalized + ("\n" if normalized else "")
 
 
 def greedy_generate(
@@ -170,8 +141,14 @@ def main() -> None:
             device=device,
             max_new_tokens=args.max_new_tokens,
         )
+        repaired_completion = completion
+        if args.syntax_repair:
+            repaired_completion = repair_body_completion(
+                prompt_source=row["prompt"],
+                completion=completion,
+            )
         passed, status = run_humaneval_check(
-            source=build_candidate_source(row["prompt"], completion),
+            source=build_candidate_source(row["prompt"], repaired_completion),
             test=row["test"],
             entry_point=row["entry_point"],
             timeout_sec=args.timeout_sec,
@@ -183,6 +160,7 @@ def main() -> None:
                 "passed": passed,
                 "status": status,
                 "completion_preview": completion[:300],
+                "repaired_completion_preview": repaired_completion[:300],
                 "generated_tokens": generated_tokens,
                 "generation_time_sec": elapsed,
             }
@@ -206,6 +184,7 @@ def main() -> None:
             "decoding": "greedy",
             "max_new_tokens": args.max_new_tokens,
             "timeout_sec": args.timeout_sec,
+            "syntax_repair": args.syntax_repair,
         },
         "tasks": len(results),
         "passed": passed_count,
