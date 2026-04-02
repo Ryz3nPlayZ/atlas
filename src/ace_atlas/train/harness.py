@@ -195,7 +195,10 @@ class Trainer:
         latest_path = checkpoint_dir / "latest.pt"
         step_path = checkpoint_dir / f"step_{step:06d}.pt"
         torch.save(payload, latest_path)
-        torch.save(payload, step_path)
+        try:
+            torch.save(payload, step_path)
+        except RuntimeError:
+            step_path.unlink(missing_ok=True)
 
     def load_checkpoint(self, checkpoint_path: str | Path) -> tuple[int, list[dict[str, float]]]:
         payload = torch.load(checkpoint_path, map_location=self.device)
