@@ -5,6 +5,7 @@ import json
 import subprocess
 import tempfile
 import time
+import textwrap
 from pathlib import Path
 import sys
 
@@ -35,7 +36,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("checkpoint", type=Path)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--max-tasks", type=int, default=20)
-    parser.add_argument("--max-new-tokens", type=int, default=64)
+    parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--timeout-sec", type=float, default=5.0)
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
@@ -64,6 +65,19 @@ def trim_completion(text: str) -> str:
         if index > 0:
             text = text[:index]
     return text.rstrip()
+
+
+def normalize_body_completion(text: str, indent: str = "    ") -> str:
+    text = trim_completion(text).replace("\r\n", "\n")
+    text = text.lstrip("\n")
+    if not text.strip():
+        return ""
+    body = textwrap.dedent(text).lstrip()
+    lines = body.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    normalized = "\n".join(f"{indent}{line}" if line.strip() else "" for line in lines)
+    return normalized + ("\n" if normalized else "")
 
 
 def extract_starter_code(reference_code: str) -> str:
@@ -117,7 +131,7 @@ def greedy_generate(
 
 def build_candidate_source(task_prompt: str, starter_code: str, completion: str) -> str:
     header = f"# Task: {task_prompt.strip()}\n"
-    body = starter_code + completion
+    body = starter_code + normalize_body_completion(completion)
     if body and not body.endswith("\n"):
         body += "\n"
     return header + body

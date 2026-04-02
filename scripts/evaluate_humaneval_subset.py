@@ -5,6 +5,7 @@ import json
 import subprocess
 import tempfile
 import time
+import textwrap
 from pathlib import Path
 import sys
 
@@ -66,6 +67,19 @@ def trim_completion(text: str) -> str:
     return text.rstrip()
 
 
+def normalize_body_completion(text: str, indent: str = "    ") -> str:
+    text = trim_completion(text).replace("\r\n", "\n")
+    text = text.lstrip("\n")
+    if not text.strip():
+        return ""
+    body = textwrap.dedent(text).lstrip()
+    lines = body.splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    normalized = "\n".join(f"{indent}{line}" if line.strip() else "" for line in lines)
+    return normalized + ("\n" if normalized else "")
+
+
 def greedy_generate(
     model: torch.nn.Module,
     prompt: str,
@@ -89,9 +103,7 @@ def greedy_generate(
 
 
 def build_candidate_source(prompt: str, completion: str) -> str:
-    if completion and not completion.endswith("\n"):
-        completion = completion + "\n"
-    return prompt + completion
+    return prompt + normalize_body_completion(completion)
 
 
 def run_humaneval_check(source: str, test: str, entry_point: str, timeout_sec: float) -> tuple[bool, str]:
@@ -148,7 +160,7 @@ def main() -> None:
             torch.cuda.reset_peak_memory_stats(device)
         completion, generated_tokens, elapsed = greedy_generate(
             model=model,
-            prompt=row["prompt"],
+            prompt=row["prompt"] + "    ",
             device=device,
             max_new_tokens=args.max_new_tokens,
         )
