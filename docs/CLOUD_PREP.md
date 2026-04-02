@@ -1,71 +1,95 @@
 # Cloud Training Prep
 
-Date: March 31, 2026
+Date: April 1, 2026
 
-For the operational TinyStories workflow, start with [FIRST_REAL_TINYSTORIES_RUN.md](./FIRST_REAL_TINYSTORIES_RUN.md) and [INTERPRETING_FIRST_RESULTS.md](./INTERPRETING_FIRST_RESULTS.md).
+This doc is now historical-plus-operational.
 
-## Local Machine Reality
+The repo is past the original "can it run at all?" stage. The accepted low-budget cloud path is:
 
-An i5-8210Y with integrated graphics is not a serious training environment for this project.
+- a single T4-class GPU
+- real tokenized JSONL training
+- same-size dense vs hybrid comparisons
+- accepted `300M` hybrid runs via microbatching and accumulation
 
-It is still useful for:
+For the current project state, pair this doc with:
 
-- repository scaffolding,
-- config and artifact design,
-- dataset manifesting,
-- tokenization pipeline bring-up,
-- benchmark adapter development,
-- pure Python smoke tests,
-- and preflight validation.
+- [Project Dossier](./PROJECT_DOSSIER.md)
+- [Roadmap](./ROADMAP.md)
+- [Code Continuation Plan](./CODE_CONTINUATION_PLAN.md)
 
-It is not useful for:
+## What A Local Machine Is Still Good For
 
-- meaningful PyTorch model training,
-- long-context throughput testing,
-- MoE performance work,
-- or large benchmark sweeps.
+A weak local machine is still fine for:
 
-## What Should Be Finished Locally Before Cloud
+- repo edits
+- config changes
+- dataset prep scripts
+- tokenization
+- pure Python verification
+- benchmark harness development
 
-- architecture spec and roadmap
-- package layout
-- config presets
-- dataset manifest schema
-- tokenizer interface
-- corpus preparation scripts
-- benchmark adapters
-- preflight environment check
-- training entrypoints and artifact layout
+It is still not the place for:
 
-## What Still Requires Cloud
+- meaningful model training
+- throughput profiling
+- `300M` hybrid runs
 
-- installing full ML dependencies
-- training dense and hybrid baselines
-- profiling recurrent and MoE kernels
-- long-context evaluation at realistic batch sizes
-- ablation sweeps
-- distributed orchestration
+## Accepted Low-Budget Cloud Setup
 
-## Recommended Cloud Sequence
+The repo has already been validated on a T4-class path.
 
-1. Provision a small GPU instance first, not a large cluster.
-2. Install the package and dependencies.
-3. Run the dense baseline for a tiny synthetic smoke test.
-4. Run the hybrid model for the same smoke test.
-5. Move to a tiny real-data TinyStories run.
-6. Confirm train and validation metrics plus checkpoints are written correctly.
-7. Only then increase run length or model size.
+Current accepted practical target:
 
-## Cloud Readiness Checklist
+- single T4 GPU
+- PyTorch with CUDA
+- fp32 training for the accepted `300M` hybrid recipe
 
-- `python scripts/preflight_check.py`
-- `python scripts/run_benchmark_recall.py`
-- `python scripts/run_benchmark_verifier.py`
-- install `torch`
-- run `python scripts/train_dense_baseline.py --steps 2`
-- run `python scripts/train_hybrid.py --steps 2`
-- run the TinyStories smoke flow from `docs/FIRST_REAL_TINYSTORIES_RUN.md`
+## Accepted 300M Hybrid T4 Recipe
+
+The working recipe that fit and completed is:
+
+- batch size: `12`
+- microbatch size: `4`
+- grad accumulation: `3`
+- mixed precision: `none`
+- activation checkpointing: `false`
+
+This matters because the naive `300M` hybrid recipe did **not** fit on the T4 until the microbatch/accumulation split was used.
+
+## What The Cloud Path Has Already Proved
+
+Completed on the low-budget path:
+
+- dense and hybrid smoke runs
+- real TinyStories training
+- same-size comparisons at `50M`, `100M`, and `300M`
+- accepted `300M` hybrid checkpoint training
+- checkpoint evaluation on WikiText-2 and CodeSearchNet Python
+- small HumanEval and MBPP task-style evaluation
+- code-focused continuation runs
+
+## What The Cloud Path Has Not Proved
+
+Not yet proven:
+
+- code-task benchmark wins
+- justification for scaling past `300M`
+- production inference readiness
+
+## Recommended Current Cloud Sequence
+
+If you are reproducing the project from scratch:
+
+1. run the TinyStories prep flow
+2. run a small dense vs hybrid comparison
+3. confirm checkpoints and evaluation scripts work
+4. reproduce the accepted `300M` hybrid recipe
+5. evaluate the saved checkpoints
+6. only then attempt code-focused continuation
 
 ## Practical Rule
 
-Do not spend cloud money discovering local packaging bugs.
+Do not spend cloud money on bigger scale until:
+
+- the accepted `300M` result is reproduced cleanly
+- and the code-task alignment bottleneck is better understood

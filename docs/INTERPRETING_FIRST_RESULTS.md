@@ -2,72 +2,68 @@
 
 Date: April 1, 2026
 
-This guide is for the first low-budget TinyStories dense vs hybrid comparison.
+This document is now historical guidance for the first same-size comparisons.
 
-The goal is not to declare a final architecture winner. The goal is to decide whether the hybrid is earning the next run.
+The first-result stage has already been passed. The repo has now completed:
 
-## What Counts As Success
+- `~50M` dense vs hybrid
+- `~100M` dense vs hybrid
+- `~300M` dense vs hybrid
 
-- the hybrid trains stably without exploding loss or repeated resume failures
-- the hybrid reaches a validation loss that is competitive with the dense baseline at the same budget tier
-- the hybrid shows either:
-  - better validation loss, or
-  - similar validation loss with better step time or throughput, or
-  - similar validation loss with a clearly stronger scaling path worth testing next
+But the original decision rules are still useful when reproducing or extending the work.
 
-## What Counts As Failure
+## What Counted As Success
 
-- validation loss is materially worse than dense and stays worse
-- the hybrid is unstable across checkpoints or resumes
-- the hybrid is much slower without a quality benefit
-- the hybrid needs repeated babysitting just to finish a small run
+The hybrid had to show:
 
-## When To Scale
+- stable training
+- clean checkpoints
+- believable validation curves
+- enough quality gain to justify another run
 
-Scale from `~50M` to `~100M` only if:
+That happened.
 
-- both dense and hybrid complete cleanly
-- validation curves are believable
-- checkpoints and resume work
-- the hybrid is at least competitive enough to justify more compute
+## What The Early Results Actually Meant
 
-Scale from `~100M` to `~300M` only if:
+The early TinyStories comparisons did **not** prove a breakthrough.
 
-- the first comparison still looks promising
-- runtime on the T4 is manageable
-- the hybrid is not obviously losing on both quality and speed
+They proved something narrower:
 
-## When To Stop And Fix Training
+- the hybrid architecture was worth taking seriously
+- the original recurrent implementation was too slow
+- the project needed a systems pivot before more scale
 
-Stop and fix the setup before spending more money if:
+## Why The GRU Pivot Was The Key Decision
 
-- train loss does not move at all
-- validation loss is flat or worsening immediately
-- throughput is far below expectation for both models
-- checkpoint files are missing or resume is broken
-- one model has a clearly mismatched parameter budget
+The accepted recurrent decision was not the first one.
 
-## The First Practical Decision Rule
+The original recurrent path had promising quality but poor hardware behavior.
+The `GRU-fused` replacement made the low-budget path workable enough to reach `100M` and `300M`.
 
-For the first serious low-budget run:
+So if you are repeating the historical progression, the lesson is:
 
-- use the `~50M` pair first
-- compare with `scripts/compare_runs.py`
-- if the hybrid is clearly worse, do not scale yet
-- if the hybrid is competitive, move to the `~100M` pair
+`quality alone is not enough; the architecture has to earn the next dollar`
 
-## What To Look At In The Artifacts
+## What Counts As Success Now
 
-- `run.json`: parameter count, device metadata, training config
-- `metrics.json`: train and validation loss trend, step time, tokens per second
-- `checkpoints/latest.pt`: confirms the run can resume
+At the current project stage, success is no longer:
 
-## Recommended Mindset
+- "the run completed"
+- or "validation loss got better on TinyStories"
 
-This stage is about decision quality, not about headline metrics.
+Success now means:
 
-The right outcome is:
+- preserving the cross-domain advantage
+- and improving actual task behavior, especially on code benchmarks
 
-- a clean comparison,
-- a justified next run,
-- or a clear reason to pause and fix training before scaling.
+## What Counts As Failure Now
+
+Failure now is:
+
+- more scale without stronger evidence
+- more loss wins without task movement
+- more code continuation that improves style but not correctness
+
+## Current Practical Rule
+
+Do not scale past `300M` until at least one cheap executable-code benchmark moves in the right direction.

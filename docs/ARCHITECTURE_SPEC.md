@@ -1,6 +1,11 @@
 # ACE-Atlas Architecture Spec
 
-Date: March 31, 2026
+Date: April 1, 2026
+
+Current implementation note:
+
+- the accepted low-budget recurrent core in the repo is now the `GRU-fused` variant
+- this document still describes the broader architectural thesis, not only the currently accepted T4-oriented implementation choice
 
 ## 1. Objective
 
@@ -148,11 +153,11 @@ Candidate families:
 - KDA / linear-attention style block,
 - Mamba-like state-space mixer as a baseline.
 
-v1 implementation decision:
+Current implementation decision:
 
-- scaffold a recurrent mixer interface,
-- begin with an xLSTM-compatible conceptual slot,
-- keep the code modular so KDA or a faster custom kernel can replace the bootstrap implementation later.
+- keep the recurrent mixer interface modular
+- use the accepted `GRU-fused` recurrent core for the current practical baseline
+- preserve the ability to swap in other recurrent or linear families later if they earn their way in experimentally
 
 Contract:
 
@@ -446,4 +451,3 @@ ACE-Atlas is interesting only if the following become true experimentally:
 - and the combined system wins on cost per solved problem.
 
 If those conditions fail, the repo should still produce a strong hybrid research baseline, but not a new model family.
-

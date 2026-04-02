@@ -1,419 +1,179 @@
 # ACE-Atlas Roadmap
 
-Date: March 31, 2026
+Date: April 1, 2026
 
-## 1. Roadmap Principle
+## Roadmap Principle
 
-This roadmap is designed to reduce research risk before scale risk.
+The project does **not** earn scale just by training a bigger model.
 
-The sequence is:
+It earns scale only if each stage proves something useful at fixed budget:
 
-1. establish reproducible baselines,
-2. validate the hybrid backbone,
-3. validate bounded memory,
-4. validate arbitration,
-5. validate verifier-driven escalation,
-6. then scale.
+1. stable same-size baseline comparison
+2. real quality advantage
+3. cross-domain validation
+4. task-level evidence
+5. then, and only then, bigger scale
 
-At every stage, the project must earn the right to continue.
+## Completed Phases
 
-## 2. Phase Breakdown
+### Phase 0: Repo and Bring-Up
 
-## Phase 0: Repository Foundation
+Completed:
+
+- research repo scaffold
+- docs and config surfaces
+- dense and hybrid entrypoints
+- manifest and tokenization utilities
+- smoke training path
+- benchmark smoke checks
+
+### Phase 1: Real-Data TinyStories Pipeline
+
+Completed:
+
+- tokenized JSONL training
+- train/validation split support
+- checkpoint save/resume
+- TinyStories preparation flow
+- first real dense vs hybrid comparisons
+
+### Phase 2: Systems Triage
+
+Completed:
+
+- profiling of the original recurrent bottleneck
+- recurrent optimization passes
+- replacement of the original recurrent core with the accepted `GRU-fused` variant
+
+Outcome:
+
+- hybrid quality signal preserved
+- throughput improved enough to justify further same-size scaling
+
+### Phase 3: Same-Size Scaling Validation
+
+Completed:
+
+- `~50M` dense vs hybrid
+- `~100M` dense vs hybrid
+- `~300M` dense vs hybrid
+
+Outcome:
+
+- hybrid beat dense at all three accepted size tiers
+
+### Phase 4: Cross-Domain Held-Out Validation
+
+Completed:
+
+- WikiText-2 checkpoint evaluation
+- CodeSearchNet Python checkpoint evaluation
+
+Outcome:
+
+- hybrid still beat the same-size dense baseline outside TinyStories
+
+## Current Phase
+
+### Phase 5: Task-Aligned Code Capability
+
+Status: `in progress`
+
+What happened already:
+
+- HumanEval subset evaluation: both dense and hybrid failed
+- MBPP subset evaluation: both dense and hybrid failed
+- code-focused continuation improved code-like behavior but not pass rate
+
+Current diagnosis:
+
+- architecture is not the immediate blocker
+- scale is not the immediate blocker
+- task alignment is the blocker
+
+## Current Accepted Baseline
+
+The accepted baseline to work from is:
+
+- `configs/hybrid_300m_gru.json`
+- `configs/train_tinystories_300m_hybrid_t4_fp32_no_ckpt.json`
+
+Accepted model class:
+
+- `~300M` GRU-hybrid
+
+Accepted practical claim:
+
+- beats same-size dense baselines on cross-domain modeling quality
+
+Unaccepted claim:
+
+- beats same-size models on executable-code task benchmarks
+
+## Next Phase
+
+### Phase 6: Task-Style Code Finetuning
 
 Goal:
 
-- create a usable research repo with docs, config surfaces, and module boundaries.
+- turn the current modeling advantage into measurable code-task wins
 
-Deliverables:
+Immediate tasks:
 
-- architecture spec,
-- roadmap,
-- package layout,
-- core configs,
-- bootstrap modules for attention, recurrent mixer, MoE, memory, arbiter, and backbone,
-- skeleton training and benchmark entrypoints.
+- keep architecture fixed at `300M`
+- continue from the accepted hybrid checkpoint lineage
+- shift training mix toward task-style code supervision
+- improve prompt/completion formatting for code tasks
+- re-evaluate on MBPP and HumanEval subsets
 
-Exit criteria:
+Acceptance gate:
 
-- repository is coherent,
-- module interfaces are stable enough to build against,
-- basic syntax checks pass.
-
-## Phase 1: Baseline Reproduction
-
-Goal:
-
-- reproduce a dense sliding-window baseline and at least one efficient baseline.
-
-Targets:
-
-- dense local-attention LM,
-- xLSTM-style baseline,
-- optional Mamba baseline.
-
-Deliverables:
-
-- training harness,
-- evaluation harness,
-- reproducible config files,
-- first throughput vs quality chart.
-
-Acceptance gates:
-
-- dense baseline is stable,
-- efficient baseline runs at the expected speedup range,
-- evaluation scripts are trusted.
+- any real pass-rate improvement over the current `0/20` MBPP and `0/10` HumanEval baseline
 
 Kill criteria:
 
-- if the team cannot produce stable baselines, do not proceed to architecture invention.
+- if repeated task-aligned continuation still fails to produce any benchmark movement, pause and revisit whether the architecture advantage is only a likelihood-level advantage
 
-## Phase 2: Hybrid Backbone
+## Deferred Phases
 
-Goal:
+These phases are now explicitly deferred until task-aligned code capability improves.
 
-- build the core recurrent + local attention + MoE hybrid.
+### Phase 7: Scale Beyond 300M
 
-Tasks:
+Deferred because:
 
-- implement hybrid block stack,
-- support configurable attention cadence,
-- compare xLSTM-first vs KDA-first recurrent slots,
-- instrument routing metrics.
+- the project already has enough same-size evidence for now
+- current value comes from tightening the claim, not more size
 
-Deliverables:
+### Phase 8: New Architecture Mechanism Work
 
-- 150M and 400M hybrid runs,
-- block ablation table,
-- first hybrid Pareto comparison against dense and efficient baselines.
+Deferred because:
 
-Acceptance gates:
+- the current architecture still has room to prove itself
+- changing architecture before resolving the current task-alignment bottleneck would muddy attribution
 
-- quality loss versus dense baseline is acceptable,
-- speedup versus dense baseline is real,
-- training is stable over full runs.
+## Practical Decision Rules
 
-## Phase 3: Memory Bus
+### Scale again only if:
 
-Goal:
+- task-style code results improve meaningfully
+- cross-domain held-out advantage stays intact
+- the T4-aware training recipe remains operational
 
-- add bounded memory in a way that is measurable and ablatable.
+### Do not scale if:
 
-Tasks:
+- pass rates stay flat at zero after another serious task-aligned continuation
+- new continuation runs only improve style, not correctness
+- code-task wins still do not materialize
 
-- implement episodic memory state,
-- implement read path,
-- implement write path,
-- add memory interval scheduling,
-- benchmark memory-on vs memory-off.
+## End State Worth Reaching
 
-Deliverables:
+The next meaningful project state is not:
 
-- memory stress tests,
-- bounded memory behavior plots,
-- long-context recall results.
+- a larger model
 
-Acceptance gates:
+It is:
 
-- memory helps or at least stays neutral on long-context tasks,
-- memory does not destabilize training,
-- memory overhead is bounded and measurable.
+`a fixed 300M hybrid that beats a same-size dense baseline on both cross-domain loss and at least one cheap executable-code benchmark`
 
-Kill criteria:
-
-- if bounded memory behaves like a noisy cache and loses to simple retrieval heuristics, pause before building arbiter logic.
-
-## Phase 4: Memory Arbiter
-
-Goal:
-
-- turn memory from a static mechanism into a cost-aware controller.
-
-Tasks:
-
-- implement action logits and telemetry,
-- start with heuristic supervision,
-- progress toward learned memory utility targets,
-- compare against recency, attention-mass, and similarity heuristics.
-
-Deliverables:
-
-- arbitration policy reports,
-- memory action histograms,
-- ablations by task family.
-
-Acceptance gates:
-
-- arbiter beats simple heuristics on at least one important benchmark family,
-- compute overhead is justified.
-
-Kill criteria:
-
-- if the arbiter cannot outperform trivial rules, freeze memory policy and scale the hybrid without it.
-
-## Phase 5: Multi-Token and Uncertainty Heads
-
-Goal:
-
-- improve training and enable adaptive inference.
-
-Tasks:
-
-- add multi-token prediction heads,
-- add uncertainty or escalation head,
-- calibrate thresholds on held-out reasoning tasks.
-
-Deliverables:
-
-- MTP ablation,
-- escalation calibration curves,
-- compute-versus-accuracy study.
-
-Acceptance gates:
-
-- MTP improves throughput-quality tradeoff or downstream performance,
-- escalation avoids unnecessary tool use on easy tasks.
-
-## Phase 6: Verifier Path
-
-Goal:
-
-- integrate program- and tool-based reasoning.
-
-Tasks:
-
-- Python executor,
-- deterministic calculator,
-- basic retrieval interface,
-- structured result injection,
-- verifier-aware trace formatting.
-
-Deliverables:
-
-- code and math benchmark deltas,
-- execution latency report,
-- failure taxonomy for verifier use.
-
-Acceptance gates:
-
-- verifier path materially improves correctness on code and math,
-- latency is acceptable when gated by uncertainty.
-
-Kill criteria:
-
-- if tool use only helps under unrealistic prompting, keep the executor for research but do not treat it as a core advantage.
-
-## Phase 7: Mid-Scale Validation
-
-Goal:
-
-- validate the winning configuration at 1.3B to 7B active scale.
-
-Tasks:
-
-- choose the best recurrent family,
-- choose the best memory policy,
-- choose the best MoE depth and width,
-- run full context curriculum.
-
-Deliverables:
-
-- mid-scale model card,
-- comprehensive benchmark sheet,
-- scale recommendation.
-
-Acceptance gates:
-
-- clear win on at least one meaningful Pareto frontier,
-- no hidden systems bottleneck that would block frontier scale.
-
-## Phase 8: Frontier Candidate
-
-Goal:
-
-- train the first model that could plausibly be competitive beyond research prototypes.
-
-Prerequisites:
-
-- stable backbone,
-- justified memory,
-- useful verifier path,
-- reproducible data pipeline,
-- acceptable hardware budget.
-
-Deliverables:
-
-- full training run,
-- model card,
-- deployment notes,
-- comparison against best available baselines.
-
-## 3. Detailed Workstreams
-
-### 3.1 Model Architecture
-
-Immediate:
-
-- lock config schema,
-- implement bootstrap modules,
-- benchmark naive versions.
-
-Next:
-
-- optimize recurrent path,
-- refine attention cadence,
-- improve memory fusion.
-
-Later:
-
-- custom kernels,
-- fused routing,
-- better state caching for inference.
-
-### 3.2 Data
-
-Immediate:
-
-- define tokenizer assumptions,
-- prepare data manifest format,
-- identify corpora for code, math, long documents.
-
-Next:
-
-- build shard and resume logic,
-- add synthetic recall tasks,
-- add tool-trace formatting.
-
-Later:
-
-- curriculum-aware mixing,
-- deduplication and contamination audits,
-- memory-target annotation.
-
-### 3.3 Evaluation
-
-Immediate:
-
-- implement benchmark adapters,
-- define system metrics collection.
-
-Next:
-
-- add long-context and code repository tests,
-- add escalation telemetry.
-
-Later:
-
-- add agentic evaluations,
-- add failure clustering and trace inspection.
-
-### 3.4 Systems
-
-Immediate:
-
-- choose training launcher,
-- define config and artifact layout.
-
-Next:
-
-- add distributed checkpointing,
-- add profiling hooks,
-- optimize memory state movement.
-
-Later:
-
-- Triton kernels,
-- inference engine integration,
-- large-scale serving support.
-
-## 4. Detailed Milestone Checklist
-
-### Milestone A: Repo Is Real
-
-- docs are written
-- package is importable
-- model config exists
-- model modules exist
-- scripts exist
-- syntax checks pass
-
-### Milestone B: Baselines Are Trusted
-
-- dense baseline runs
-- recurrent baseline runs
-- metrics scripts work
-- results are reproducible
-
-### Milestone C: Hybrid Wins Somewhere
-
-- hybrid beats dense on speed at useful quality
-- hybrid beats pure recurrent on recall
-
-### Milestone D: Memory Is Worth Keeping
-
-- memory helps long-context retrieval
-- memory cost is bounded
-
-### Milestone E: Arbiter Is Real
-
-- learned arbitration beats heuristics
-
-### Milestone F: Verifier Adds Value
-
-- code/math correctness materially increases
-
-### Milestone G: Scale Is Justified
-
-- 1.3B to 7B active model still shows the same advantages
-
-## 5. Roles Needed
-
-Minimum:
-
-- research lead,
-- model engineer,
-- systems engineer,
-- eval and data engineer.
-
-Preferred:
-
-- kernel engineer,
-- RL specialist,
-- safety engineer.
-
-## 6. Decision Log Requirements
-
-Every major experiment should record:
-
-- exact config,
-- training tokens,
-- context curriculum,
-- systems metrics,
-- benchmark summary,
-- whether the result changes roadmap direction.
-
-The repo should accumulate decisions, not just checkpoints.
-
-## 7. Immediate Next Actions
-
-The next concrete engineering actions are:
-
-1. finish the repository scaffold,
-2. implement the first-pass hybrid backbone,
-3. add benchmark-ready interfaces,
-4. wire in a baseline training config,
-5. and add syntax or smoke validation in CI.
-
-## 8. Time Horizon
-
-If executed seriously:
-
-- repository scaffold: days,
-- baseline reproduction: 2 to 4 weeks,
-- hybrid backbone and memory prototype: 4 to 8 weeks,
-- verifier path and mid-scale validation: 6 to 12 weeks after that,
-- frontier candidate: only after the earlier gates clear.
-
-The fastest way to fail is to skip baseline reproduction and jump directly to large-scale training.
-
+If the project reaches that state, then scaling past `300M` becomes much easier to justify.

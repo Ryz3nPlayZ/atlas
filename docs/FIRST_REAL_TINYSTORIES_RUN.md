@@ -4,6 +4,11 @@ Date: April 1, 2026
 
 This is the operational guide for the first real ACE-Atlas training milestone.
 
+Historical note:
+
+- this doc is for reproducing the first clean real-data workflow
+- the accepted current hybrid baseline later moved to the `GRU-fused` configs and the accepted `300M` T4 recipe
+
 The target is simple:
 
 - prepare TinyStories,
@@ -85,7 +90,7 @@ Small real-data smoke:
 
 ```bash
 python scripts/train_dense_baseline.py \
-  --config configs/dense_small.json \
+  --config configs/dense_tiny_debug.json \
   --train-config configs/train_tinystories_smoke.json \
   --run-name tinystories_dense_smoke
 ```
@@ -103,7 +108,7 @@ Longer low-budget T4 comparison run:
 
 ```bash
 python scripts/train_dense_baseline.py \
-  --config configs/dense_small.json \
+  --config configs/dense_50m.json \
   --train-config configs/train_tinystories_t4.json \
   --run-name tinystories_dense_t4
 ```
@@ -113,14 +118,14 @@ python scripts/train_dense_baseline.py \
 Check the parameter count first:
 
 ```bash
-python scripts/report_model_stats.py --model-name ace_atlas --config configs/hybrid_50m.json
+python scripts/report_model_stats.py --model-name ace_atlas --config configs/hybrid_50m_gru.json
 ```
 
 Small real-data smoke:
 
 ```bash
 python scripts/train_hybrid.py \
-  --config configs/hybrid_small.json \
+  --config configs/hybrid_tiny_debug.json \
   --train-config configs/train_tinystories_smoke.json \
   --run-name tinystories_hybrid_smoke
 ```
@@ -129,7 +134,7 @@ First serious low-budget comparison run:
 
 ```bash
 python scripts/train_hybrid.py \
-  --config configs/hybrid_50m.json \
+  --config configs/hybrid_50m_gru.json \
   --train-config configs/train_tinystories_first_compare.json \
   --run-name tinystories_hybrid_50m
 ```
@@ -138,7 +143,7 @@ Longer low-budget T4 comparison run:
 
 ```bash
 python scripts/train_hybrid.py \
-  --config configs/hybrid_small.json \
+  --config configs/hybrid_50m_gru.json \
   --train-config configs/train_tinystories_t4.json \
   --run-name tinystories_hybrid_t4
 ```
@@ -184,7 +189,7 @@ Hybrid example:
 
 ```bash
 python scripts/train_hybrid.py \
-  --config configs/hybrid_50m.json \
+  --config configs/hybrid_50m_gru.json \
   --train-config configs/train_tinystories_first_compare.json \
   --run-name tinystories_hybrid_50m_resume \
   --resume-from artifacts/tinystories_hybrid_50m/checkpoints/latest.pt
@@ -214,7 +219,7 @@ Look at:
 Recommended first serious comparison:
 
 - dense: `configs/dense_50m.json`
-- hybrid: `configs/hybrid_50m.json`
+- hybrid: `configs/hybrid_50m_gru.json`
 - train config: `configs/train_tinystories_first_compare.json`
 
 ## 9. Practical Scope
