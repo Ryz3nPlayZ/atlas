@@ -84,6 +84,8 @@ class TokenizedJsonlDataset(Dataset):
                     chunk_mask = None
                     if loss_mask is not None:
                         chunk_mask = torch.tensor(loss_mask[start : start + window], dtype=torch.bool)
+                        if not torch.any(chunk_mask[1:]):
+                            continue
                     self.examples.append((torch.tensor(chunk, dtype=torch.long), chunk_mask))
 
     def __len__(self) -> int:

@@ -63,3 +63,19 @@ def test_tokenized_jsonl_dataset_applies_loss_mask(tmp_path: Path) -> None:
     assert record["input_ids"].tolist() == [1, 2, 3, 4]
     assert record["labels"].tolist() == [-100, 3, 4, 5]
     assert record["segment_ids"].tolist() == [0, 0, 1, 1]
+
+
+def test_tokenized_jsonl_dataset_skips_prompt_only_chunks(tmp_path: Path) -> None:
+    tokenized_path = tmp_path / "prompt_heavy_tokens.jsonl"
+    tokenized_path.write_text(
+        '{"tokens": [1, 2, 3, 4, 5, 6, 7], "loss_mask": [0, 0, 0, 0, 1, 1, 1]}\n',
+        encoding="utf-8",
+    )
+
+    dataset = TokenizedJsonlDataset(tokenized_path, sequence_length=3)
+
+    assert len(dataset) == 1
+    record = dataset[0]
+    assert record["input_ids"].tolist() == [4, 5, 6]
+    assert record["labels"].tolist() == [5, 6, 7]
+    assert record["segment_ids"].tolist() == [0, 1, 1]
