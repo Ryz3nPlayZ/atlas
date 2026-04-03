@@ -1,0 +1,23 @@
+{
+  "run_name": "mixed_code_text_base_100m_hybrid_v1",
+  "steps": 800,
+  "batch_size": 12,
+  "sequence_length": 256,
+  "data_mode": "tokenized",
+  "train_data_path": "data/mixed_code_text_base_v1/train_tokens.jsonl",
+  "val_data_path": "data/mixed_code_text_base_v1/validation_tokens.jsonl",
+  "learning_rate": 0.0003,
+  "weight_decay": 0.1,
+  "grad_clip_norm": 1.0,
+  "log_every": 20,
+  "validation_every": 100,
+  "validation_batches": 20,
+  "checkpoint_every": 100,
+  "runtime_profile_every": 100,
+  "resume_from": null,
+  "output_dir": "artifacts",
+  "seed": 7,
+  "device": "cuda",
+  "mixed_precision": "none",
+  "activation_checkpointing": false
+}
