@@ -179,9 +179,11 @@ class ACEAtlasModel(nn.Module):
         self,
         input_ids: Tensor,
         segment_ids: Tensor | None = None,
+        mode_ids: Tensor | None = None,
         memory_state: MemoryState | None = None,
         collect_runtime_stats: bool = False,
     ) -> ModelOutput:
+        del mode_ids
         runtime_stats = {"recurrent": 0.0, "attention": 0.0, "moe": 0.0, "memory": 0.0, "heads": 0.0} if collect_runtime_stats else None
         hidden = self.dropout(self.embed_tokens(input_ids))
         if self.segment_embeddings is not None and segment_ids is not None:

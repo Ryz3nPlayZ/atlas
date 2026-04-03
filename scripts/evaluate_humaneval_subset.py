@@ -18,6 +18,7 @@ if str(SRC) not in sys.path:
 
 from ace_atlas.config import ACEAtlasConfig
 from ace_atlas.experiment import build_model, count_parameters, format_parameter_count
+from ace_atlas.modes import resolve_mode_id
 from ace_atlas.tokenizer.factory import build_tokenizer, build_tokenizer_from_training_config
 from code_eval_utils import normalize_body_completion, repair_body_completion, trim_completion
 
@@ -32,6 +33,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--syntax-repair", action="store_true")
     parser.add_argument("--tokenizer-name", type=str, default=None)
     parser.add_argument("--tokenizer-path", type=Path, default=None)
+    parser.add_argument("--prompt-mode", type=str, default="code")
+    parser.add_argument("--generation-mode", type=str, default="answer")
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
@@ -59,22 +62,27 @@ def greedy_generate(
     prompt: str,
     device: torch.device,
     max_new_tokens: int,
+    prompt_mode_id: int,
+    generation_mode_id: int,
 ) -> tuple[str, int, float]:
     token_ids = tokenizer.encode(prompt, add_eos=False)
     generated = list(token_ids)
     segment_ids = [0] * len(token_ids)
+    mode_ids = [prompt_mode_id] * len(token_ids)
     start = time.perf_counter()
     with torch.no_grad():
         for _ in range(max_new_tokens):
             input_ids = torch.tensor([generated], dtype=torch.long, device=device)
+            mode_tensor = torch.tensor([mode_ids], dtype=torch.long, device=device)
             if hasattr(model, "segment_embeddings") and getattr(model, "segment_embeddings") is not None:
                 segment_tensor = torch.tensor([segment_ids], dtype=torch.long, device=device)
-                output = model(input_ids, segment_ids=segment_tensor)
+                output = model(input_ids, segment_ids=segment_tensor, mode_ids=mode_tensor)
             else:
-                output = model(input_ids)
+                output = model(input_ids, mode_ids=mode_tensor)
             next_token = int(torch.argmax(output.logits[0, -1]).item())
             generated.append(next_token)
             segment_ids.append(1)
+            mode_ids.append(generation_mode_id)
             if next_token == tokenizer.eos_token_id:
                 break
     elapsed = time.perf_counter() - start
@@ -131,6 +139,8 @@ def main() -> None:
         if args.tokenizer_name is not None
         else build_tokenizer_from_training_config(training_config)
     )
+    prompt_mode_id = resolve_mode_id(args.prompt_mode)
+    generation_mode_id = resolve_mode_id(args.generation_mode)
     model = build_model(model_name, config).to(device)
     model.load_state_dict(payload["model_state_dict"])
     model.eval()
@@ -150,6 +160,8 @@ def main() -> None:
             prompt=row["prompt"] + "    ",
             device=device,
             max_new_tokens=args.max_new_tokens,
+            prompt_mode_id=prompt_mode_id,
+            generation_mode_id=generation_mode_id,
         )
         repaired_completion = completion
         if args.syntax_repair:
@@ -197,6 +209,8 @@ def main() -> None:
             "syntax_repair": args.syntax_repair,
             "tokenizer_name": tokenizer.name,
             "tokenizer_path": getattr(tokenizer, "model_path", None),
+            "prompt_mode": args.prompt_mode,
+            "generation_mode": args.generation_mode,
         },
         "tasks": len(results),
         "passed": passed_count,

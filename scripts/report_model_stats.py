@@ -17,7 +17,7 @@ from ace_atlas.experiment import build_model, count_parameters, format_parameter
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Report parameter counts for an ACE-Atlas model config.")
-    parser.add_argument("--model-name", required=True, choices=["dense_baseline", "ace_atlas"])
+    parser.add_argument("--model-name", required=True, choices=["dense_baseline", "ace_atlas", "ace_atlas_transformer"])
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON.")
     return parser.parse_args()

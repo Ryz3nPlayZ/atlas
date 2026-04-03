@@ -108,3 +108,19 @@ def test_tokenized_jsonl_dataset_skips_prompt_only_chunks(tmp_path: Path) -> Non
     assert record["input_ids"].tolist() == [4, 5, 6]
     assert record["labels"].tolist() == [5, 6, 7]
     assert record["segment_ids"].tolist() == [0, 1, 1]
+
+
+def test_tokenized_jsonl_dataset_preserves_mode_ids(tmp_path: Path) -> None:
+    tokenized_path = tmp_path / "mode_tokens.jsonl"
+    tokenized_path.write_text(
+        '{"tokens": [1, 2, 3, 4, 5], "loss_mask": [0, 0, 1, 1, 1], "mode_ids": [1, 1, 2, 2, 2]}\n',
+        encoding="utf-8",
+    )
+
+    dataset = TokenizedJsonlDataset(tokenized_path, sequence_length=4)
+    record = dataset[0]
+
+    assert record["input_ids"].tolist() == [1, 2, 3, 4]
+    assert record["labels"].tolist() == [-100, 3, 4, 5]
+    assert record["segment_ids"].tolist() == [0, 0, 1, 1]
+    assert record["mode_ids"].tolist() == [1, 1, 2, 2]

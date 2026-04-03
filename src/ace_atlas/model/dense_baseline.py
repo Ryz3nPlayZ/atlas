@@ -51,7 +51,14 @@ class DenseCausalTransformer(nn.Module):
         )
         self.uncertainty_head = nn.Linear(config.model_dim, 1)
 
-    def forward(self, input_ids: Tensor, collect_runtime_stats: bool = False) -> ModelOutput:
+    def forward(
+        self,
+        input_ids: Tensor,
+        segment_ids: Tensor | None = None,
+        mode_ids: Tensor | None = None,
+        collect_runtime_stats: bool = False,
+    ) -> ModelOutput:
+        del segment_ids, mode_ids
         hidden = self.dropout(self.embed_tokens(input_ids))
         block_aux = []
         for layer in self.layers:

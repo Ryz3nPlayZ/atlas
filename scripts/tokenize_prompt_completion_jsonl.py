@@ -12,6 +12,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from ace_atlas.tokenizer.factory import build_tokenizer
+from ace_atlas.modes import resolve_mode_id
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,12 +29,17 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--prompt-key", type=str, default="prompt")
     parser.add_argument("--completion-key", type=str, default="completion")
+    parser.add_argument("--emit-mode-ids", action="store_true")
+    parser.add_argument("--prompt-mode", type=str, default="code")
+    parser.add_argument("--completion-mode", type=str, default="answer")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     tokenizer = build_tokenizer(args.tokenizer_name, args.tokenizer_path)
+    prompt_mode_id = resolve_mode_id(args.prompt_mode)
+    completion_mode_id = resolve_mode_id(args.completion_mode)
     args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
     rows = 0
@@ -50,7 +56,10 @@ def main() -> None:
             completion_tokens = tokenizer.encode(completion, add_eos=True)
             tokens = prompt_tokens + completion_tokens
             loss_mask = [0] * len(prompt_tokens) + [1] * len(completion_tokens)
-            sink.write(json.dumps({"tokens": tokens, "loss_mask": loss_mask}) + "\n")
+            payload = {"tokens": tokens, "loss_mask": loss_mask}
+            if args.emit_mode_ids:
+                payload["mode_ids"] = [prompt_mode_id] * len(prompt_tokens) + [completion_mode_id] * len(completion_tokens)
+            sink.write(json.dumps(payload) + "\n")
             rows += 1
 
     print(
@@ -58,6 +67,7 @@ def main() -> None:
             {
                 "tokenizer_name": args.tokenizer_name,
                 "tokenizer_path": str(args.tokenizer_path),
+                "emit_mode_ids": args.emit_mode_ids,
                 "rows": rows,
                 "output_jsonl": str(args.output_jsonl),
             },

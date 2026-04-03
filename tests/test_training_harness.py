@@ -5,7 +5,16 @@ from pathlib import Path
 
 import torch
 
-from ace_atlas.config import ACEAtlasConfig, AttentionConfig, ArbiterConfig, MemoryConfig, MoEConfig, RecurrentConfig
+from ace_atlas.config import (
+    ACEAtlasConfig,
+    AttentionConfig,
+    ArbiterConfig,
+    MemoryConfig,
+    ModeConditioningConfig,
+    MoEConfig,
+    RecurrentConfig,
+    TransformerConfig,
+)
 from ace_atlas.train.config import TrainingConfig
 from ace_atlas.train.harness import Trainer
 
@@ -39,8 +48,38 @@ def tiny_gru_segment_adapter_config() -> ACEAtlasConfig:
     return config
 
 
+def tiny_transformer_hybrid_config() -> ACEAtlasConfig:
+    return ACEAtlasConfig(
+        architecture="transformer_hybrid",
+        vocab_size=256,
+        model_dim=32,
+        num_layers=6,
+        attention_every_n=1,
+        max_position_embeddings=256,
+        mtp_horizon=1,
+        attention=AttentionConfig(
+            window_size=32,
+            num_heads=4,
+            num_kv_heads=2,
+            qk_norm=True,
+            global_latent_dim=16,
+        ),
+        recurrent=RecurrentConfig(state_dim=32),
+        moe=MoEConfig(enabled=True, num_shared_experts=1, num_routed_experts=2, top_k=1, hidden_dim=64),
+        memory=MemoryConfig(enabled=False, key_dim=32, value_dim=32),
+        arbiter=ArbiterConfig(enabled=False, hidden_dim=32),
+        transformer=TransformerConfig(local_layers_per_global=5, dense_hidden_dim=64, moe_start_fraction=0.5),
+        mode_conditioning=ModeConditioningConfig(enabled=True),
+    )
+
+
 def write_tokenized_file(path: Path, records: list[list[int]]) -> None:
     payload = "\n".join(json.dumps({"tokens": record}) for record in records) + "\n"
+    path.write_text(payload, encoding="utf-8")
+
+
+def write_mode_tokenized_file(path: Path, records: list[dict[str, list[int]]]) -> None:
+    payload = "\n".join(json.dumps(record) for record in records) + "\n"
     path.write_text(payload, encoding="utf-8")
 
 
@@ -278,3 +317,55 @@ def test_trainer_supports_nonstrict_init_for_new_code_params(tmp_path: Path) -> 
 
     assert metrics[0]["phase"] == "train"
     assert metrics[0]["step"] == 1.0
+
+
+def test_trainer_supports_transformer_hybrid_and_mode_ids(tmp_path: Path) -> None:
+    train_path = tmp_path / "train_modes.jsonl"
+    val_path = tmp_path / "val_modes.jsonl"
+    output_dir = tmp_path / "artifacts"
+
+    write_mode_tokenized_file(
+        train_path,
+        [
+            {
+                "tokens": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+                "loss_mask": [0, 0, 1, 1, 1, 1, 1, 1, 1],
+                "mode_ids": [1, 1, 2, 2, 2, 2, 2, 2, 2],
+            },
+            {
+                "tokens": [11, 12, 13, 14, 15, 16, 17, 18, 19],
+                "loss_mask": [0, 0, 1, 1, 1, 1, 1, 1, 1],
+                "mode_ids": [1, 1, 2, 2, 2, 2, 2, 2, 2],
+            },
+        ],
+    )
+    write_mode_tokenized_file(
+        val_path,
+        [
+            {
+                "tokens": [21, 22, 23, 24, 25, 26, 27, 28, 29],
+                "loss_mask": [0, 0, 1, 1, 1, 1, 1, 1, 1],
+                "mode_ids": [1, 1, 2, 2, 2, 2, 2, 2, 2],
+            }
+        ],
+    )
+
+    config = TrainingConfig(
+        run_name="transformer_hybrid_dev",
+        steps=1,
+        batch_size=1,
+        sequence_length=4,
+        data_mode="tokenized",
+        train_data_path=str(train_path),
+        val_data_path=str(val_path),
+        validation_every=1,
+        output_dir=str(output_dir),
+        device="cpu",
+        activation_checkpointing=False,
+    )
+
+    trainer = Trainer("ace_atlas_transformer", tiny_transformer_hybrid_config(), config)
+    metrics = trainer.train()
+
+    assert metrics[0]["phase"] == "train"
+    assert metrics[-1]["phase"] == "val"

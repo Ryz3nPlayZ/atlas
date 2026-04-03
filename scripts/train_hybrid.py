@@ -16,6 +16,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train the ACE-Atlas hybrid model.")
     parser.add_argument("--config", type=Path, default=ROOT / "configs" / "hybrid_small.json")
     parser.add_argument("--train-config", type=Path, default=ROOT / "configs" / "train_dev.json")
+    parser.add_argument(
+        "--model-name",
+        type=str,
+        default=None,
+        choices=["ace_atlas", "ace_atlas_transformer"],
+    )
     parser.add_argument("--steps", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=None)
     parser.add_argument("--sequence-length", type=int, default=None)
@@ -46,6 +52,9 @@ def main() -> None:
     args = parse_args()
     config = ACEAtlasConfig.from_dict(json.loads(args.config.read_text(encoding="utf-8")))
     train_config = TrainingConfig.from_dict(json.loads(args.train_config.read_text(encoding="utf-8")))
+    model_name = args.model_name
+    if model_name is None:
+        model_name = "ace_atlas_transformer" if config.architecture == "transformer_hybrid" else "ace_atlas"
     train_config.output_dir = str(ROOT / "artifacts")
     if args.run_name is not None:
         train_config.run_name = args.run_name
@@ -73,7 +82,7 @@ def main() -> None:
         train_config.resume_from = str(args.resume_from)
     if args.init_from is not None:
         train_config.init_from = str(args.init_from)
-    trainer = Trainer("ace_atlas", config, train_config)
+    trainer = Trainer(model_name, config, train_config)
     trainer.train()
 
 

@@ -13,7 +13,8 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader
 
 from ace_atlas.config import ACEAtlasConfig
-from ace_atlas.experiment import build_model, collect_system_metadata, count_parameters, format_parameter_count
+from ace_atlas.experiment import build_model, collect_system_metadata, count_parameters, format_parameter_count, load_json
+from ace_atlas.model.atlas_transformer import ACEAtlasTransformerModel
 from ace_atlas.model.backbone import ACEAtlasModel
 from ace_atlas.model.dense_baseline import DenseCausalTransformer
 from ace_atlas.train.config import TrainingConfig
@@ -24,6 +25,7 @@ from ace_atlas.train.objectives import total_training_loss
 MODEL_REGISTRY = {
     "dense_baseline": DenseCausalTransformer,
     "ace_atlas": ACEAtlasModel,
+    "ace_atlas_transformer": ACEAtlasTransformerModel,
 }
 
 
@@ -50,7 +52,7 @@ class Trainer:
         set_seed(training_config.seed)
         self.device = resolve_device(training_config.device)
         self.model: nn.Module = build_model(model_name, model_config).to(self.device)
-        if isinstance(self.model, ACEAtlasModel):
+        if isinstance(self.model, (ACEAtlasModel, ACEAtlasTransformerModel)):
             self.model.enable_activation_checkpointing(training_config.activation_checkpointing)
         self.optimizer = AdamW(
             self.model.parameters(),
@@ -75,6 +77,20 @@ class Trainer:
         )
         self.model_stats = count_parameters(self.model)
         self.system_metadata = collect_system_metadata(self.device)
+        self.teacher_model: nn.Module | None = None
+        if (
+            training_config.distill_weight > 0.0
+            and training_config.teacher_model_name
+            and training_config.teacher_config_path
+            and training_config.teacher_checkpoint_path
+        ):
+            teacher_config = ACEAtlasConfig.from_dict(load_json(training_config.teacher_config_path))
+            self.teacher_model = build_model(training_config.teacher_model_name, teacher_config).to(self.device)
+            teacher_payload = torch.load(training_config.teacher_checkpoint_path, map_location=self.device)
+            self.teacher_model.load_state_dict(teacher_payload["model_state_dict"])
+            self.teacher_model.eval()
+            for parameter in self.teacher_model.parameters():
+                parameter.requires_grad_(False)
 
     def write_run_metadata(self, output_dir: Path) -> None:
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -145,26 +161,43 @@ class Trainer:
         segment_ids = batch.get("segment_ids")
         if segment_ids is not None:
             segment_ids = segment_ids.to(self.device)
+        mode_ids = batch.get("mode_ids")
+        if mode_ids is not None:
+            mode_ids = mode_ids.to(self.device)
+        teacher_logits = None
         with torch.autocast(
             device_type=self.device.type,
             dtype=self.autocast_dtype,
             enabled=self.autocast_enabled,
         ):
-            if segment_ids is not None and isinstance(self.model, ACEAtlasModel):
-                output = self.model(
-                    input_ids,
-                    segment_ids=segment_ids,
-                    collect_runtime_stats=collect_runtime_profile,
-                )
-            else:
-                output = self.model(input_ids, collect_runtime_stats=collect_runtime_profile)
-            losses = total_training_loss(output, labels)
+            output = self.model(
+                input_ids,
+                segment_ids=segment_ids,
+                mode_ids=mode_ids,
+                collect_runtime_stats=collect_runtime_profile,
+            )
+            if training and self.teacher_model is not None:
+                with torch.no_grad():
+                    teacher_output = self.teacher_model(
+                        input_ids,
+                        segment_ids=segment_ids,
+                        mode_ids=mode_ids,
+                        collect_runtime_stats=False,
+                    )
+                teacher_logits = teacher_output.logits
+            losses = total_training_loss(
+                output,
+                labels,
+                teacher_logits=teacher_logits,
+                distill_weight=self.training_config.distill_weight,
+                distill_temperature=self.training_config.distill_temperature,
+            )
 
         return losses, output.runtime_stats
 
     def evaluate(self, dataloader: DataLoader, step: int) -> dict[str, float]:
         self.model.eval()
-        totals: dict[str, float] = {"loss": 0.0, "lm_loss": 0.0, "mtp_loss": 0.0}
+        totals: dict[str, float] = {"loss": 0.0, "lm_loss": 0.0, "mtp_loss": 0.0, "distill_loss": 0.0}
         batches_seen = 0
         max_batches = self.training_config.validation_batches
         started = time.perf_counter()
@@ -263,6 +296,11 @@ class Trainer:
             f"params={format_parameter_count(self.model_stats['total'])} "
             f"trainable={format_parameter_count(self.model_stats['trainable'])}"
         )
+        if self.teacher_model is not None:
+            print(
+                f"[{self.model_name}] teacher={self.training_config.teacher_model_name} "
+                f"distill_weight={self.training_config.distill_weight}"
+            )
 
         train_loader, val_loader = self.build_dataloaders()
         train_batches = self.cycle_batches(train_loader)
@@ -286,12 +324,12 @@ class Trainer:
             started = time.perf_counter()
             self.optimizer.zero_grad(set_to_none=True)
             runtime_stats: dict[str, float] | None = None
-            aggregated_losses = {"loss": 0.0, "lm_loss": 0.0, "mtp_loss": 0.0}
+            aggregated_losses = {"loss": 0.0, "lm_loss": 0.0, "mtp_loss": 0.0, "distill_loss": 0.0}
             for micro_step in range(self.training_config.grad_accum_steps):
                 batch = next(train_batches)
                 micro_losses, micro_runtime_stats = self.run_step(
                     batch,
-                    training=False,
+                    training=True,
                     collect_runtime_profile=collect_runtime_profile and micro_step == self.training_config.grad_accum_steps - 1,
                 )
                 loss = micro_losses["loss"] / self.training_config.grad_accum_steps
@@ -335,6 +373,7 @@ class Trainer:
                     f"loss={record['loss']:.4f} "
                     f"lm={record['lm_loss']:.4f} "
                     f"mtp={record['mtp_loss']:.4f} "
+                    f"distill={record['distill_loss']:.4f} "
                     f"step_time={record['step_time_sec']:.3f}s "
                     f"tok/s={record['tokens_per_sec']:.1f}"
                 )

@@ -10,6 +10,10 @@ class AttentionConfig:
     num_kv_heads: int = 8
     dropout: float = 0.0
     use_bias: bool = False
+    qk_norm: bool = False
+    rope_base_local: float = 10_000.0
+    rope_base_global: float = 1_000_000.0
+    global_latent_dim: int = 0
 
 
 @dataclass(slots=True)
@@ -57,7 +61,24 @@ class EscalationConfig:
 
 
 @dataclass(slots=True)
+class TransformerConfig:
+    local_layers_per_global: int = 5
+    dense_hidden_dim: int = 4096
+    moe_start_fraction: float = 0.5
+    use_rms_norm: bool = True
+    use_rotary_embeddings: bool = True
+
+
+@dataclass(slots=True)
+class ModeConditioningConfig:
+    enabled: bool = False
+    modes: list[str] = field(default_factory=lambda: ["general", "code", "answer"])
+    shared_experts_per_mode: int = 1
+
+
+@dataclass(slots=True)
 class ACEAtlasConfig:
+    architecture: str = "gru_hybrid"
     vocab_size: int = 50257
     model_dim: int = 1024
     num_layers: int = 16
@@ -74,6 +95,8 @@ class ACEAtlasConfig:
     memory: MemoryConfig = field(default_factory=MemoryConfig)
     arbiter: ArbiterConfig = field(default_factory=ArbiterConfig)
     escalation: EscalationConfig = field(default_factory=EscalationConfig)
+    transformer: TransformerConfig = field(default_factory=TransformerConfig)
+    mode_conditioning: ModeConditioningConfig = field(default_factory=ModeConditioningConfig)
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -81,6 +104,7 @@ class ACEAtlasConfig:
     @classmethod
     def from_dict(cls, data: dict) -> "ACEAtlasConfig":
         return cls(
+            architecture=data.get("architecture", "gru_hybrid"),
             vocab_size=data.get("vocab_size", 50257),
             model_dim=data.get("model_dim", 1024),
             num_layers=data.get("num_layers", 16),
@@ -97,6 +121,8 @@ class ACEAtlasConfig:
             memory=MemoryConfig(**data.get("memory", {})),
             arbiter=ArbiterConfig(**data.get("arbiter", {})),
             escalation=EscalationConfig(**data.get("escalation", {})),
+            transformer=TransformerConfig(**data.get("transformer", {})),
+            mode_conditioning=ModeConditioningConfig(**data.get("mode_conditioning", {})),
         )
 
     @classmethod

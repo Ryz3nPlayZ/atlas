@@ -27,6 +27,11 @@ class TrainingConfig:
     resume_from: str | None = None
     init_from: str | None = None
     init_strict: bool = True
+    teacher_model_name: str | None = None
+    teacher_config_path: str | None = None
+    teacher_checkpoint_path: str | None = None
+    distill_weight: float = 0.0
+    distill_temperature: float = 1.0
     output_dir: str = "artifacts"
     seed: int = 7
     device: str = "cuda"

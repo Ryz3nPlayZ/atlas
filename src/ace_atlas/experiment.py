@@ -7,6 +7,7 @@ import torch
 from torch import nn
 
 from ace_atlas.config import ACEAtlasConfig
+from ace_atlas.model.atlas_transformer import ACEAtlasTransformerModel
 from ace_atlas.model.backbone import ACEAtlasModel
 from ace_atlas.model.dense_baseline import DenseCausalTransformer
 
@@ -14,6 +15,7 @@ from ace_atlas.model.dense_baseline import DenseCausalTransformer
 MODEL_REGISTRY = {
     "dense_baseline": DenseCausalTransformer,
     "ace_atlas": ACEAtlasModel,
+    "ace_atlas_transformer": ACEAtlasTransformerModel,
 }
 
 

@@ -54,7 +54,7 @@ class TokenizedJsonlDataset(Dataset):
     def __init__(self, path: str | Path, sequence_length: int) -> None:
         self.path = Path(path)
         self.sequence_length = sequence_length
-        self.examples: list[tuple[Tensor, Tensor | None]] = []
+        self.examples: list[tuple[Tensor, Tensor | None, Tensor | None]] = []
         self._load_examples()
         if not self.examples:
             raise ValueError(
@@ -86,13 +86,21 @@ class TokenizedJsonlDataset(Dataset):
                         chunk_mask = torch.tensor(loss_mask[start : start + window], dtype=torch.bool)
                         if not torch.any(chunk_mask[1:]):
                             continue
-                    self.examples.append((torch.tensor(chunk, dtype=torch.long), chunk_mask))
+                    mode_ids = record.get("mode_ids")
+                    chunk_modes = None
+                    if mode_ids is not None:
+                        if not isinstance(mode_ids, list):
+                            raise ValueError(f"Missing mode_ids list in {self.path}:{line_number}")
+                        if len(mode_ids) != len(tokens):
+                            raise ValueError(f"mode_ids length mismatch in {self.path}:{line_number}")
+                        chunk_modes = torch.tensor(mode_ids[start : start + window], dtype=torch.long)
+                    self.examples.append((torch.tensor(chunk, dtype=torch.long), chunk_mask, chunk_modes))
 
     def __len__(self) -> int:
         return len(self.examples)
 
     def __getitem__(self, index: int) -> dict[str, Tensor]:
-        tokens, loss_mask = self.examples[index]
+        tokens, loss_mask, mode_ids = self.examples[index]
         labels = tokens[1:].clone()
         segment_ids = None
         if loss_mask is not None:
@@ -104,6 +112,8 @@ class TokenizedJsonlDataset(Dataset):
         }
         if segment_ids is not None:
             batch["segment_ids"] = segment_ids
+        if mode_ids is not None:
+            batch["mode_ids"] = mode_ids[:-1]
         return batch
 
 
