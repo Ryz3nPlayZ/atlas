@@ -14,6 +14,8 @@ class TrainingConfig:
     data_mode: str = "synthetic"
     train_data_path: str | None = None
     val_data_path: str | None = None
+    tokenizer_name: str = "byte"
+    tokenizer_path: str | None = None
     learning_rate: float = 3e-4
     weight_decay: float = 0.1
     grad_clip_norm: float = 1.0

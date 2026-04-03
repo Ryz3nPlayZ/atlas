@@ -9,6 +9,7 @@ description = "ACE-Atlas: a hybrid recurrent-memory-MoE language model research 
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "sentencepiece>=0.2.0",
   "torch>=2.4",
 ]
 

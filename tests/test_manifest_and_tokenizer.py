@@ -1,7 +1,10 @@
 from pathlib import Path
 
+import sentencepiece as spm
+
 from ace_atlas.data.manifest import DatasetManifest, infer_entry
 from ace_atlas.tokenizer.byte_level import ByteTokenizer
+from ace_atlas.tokenizer.factory import build_tokenizer
 from ace_atlas.train.data import TokenizedJsonlDataset
 
 
@@ -11,6 +14,32 @@ def test_byte_tokenizer_roundtrip() -> None:
     tokens = tokenizer.encode(text)
     assert tokens[-1] == tokenizer.eos_token_id
     assert tokenizer.decode(tokens) == text
+
+
+def test_sentencepiece_tokenizer_roundtrip(tmp_path: Path) -> None:
+    corpus = tmp_path / "corpus.txt"
+    corpus.write_text("def add(a, b):\n    return a + b\n\n# task\n", encoding="utf-8")
+    model_prefix = tmp_path / "toy_sp"
+    spm.SentencePieceTrainer.train(
+        input=str(corpus),
+        model_prefix=str(model_prefix),
+        vocab_size=300,
+        model_type="bpe",
+        character_coverage=1.0,
+        normalization_rule_name="identity",
+        remove_extra_whitespaces=False,
+        byte_fallback=True,
+        pad_id=0,
+        unk_id=1,
+        bos_id=2,
+        eos_id=3,
+    )
+    tokenizer = build_tokenizer("sentencepiece_bpe", model_prefix.with_suffix(".model"))
+    text = "def add(a, b):\n    return a + b\n"
+    tokens = tokenizer.encode(text)
+    assert tokens[-1] == tokenizer.eos_token_id
+    decoded = tokenizer.decode(tokens)
+    assert "def add" in decoded
 
 
 def test_manifest_roundtrip(tmp_path: Path) -> None:

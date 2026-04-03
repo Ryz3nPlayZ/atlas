@@ -117,6 +117,7 @@ def test_trainer_supports_tokenized_validation_and_resume(tmp_path: Path) -> Non
     run_payload = json.loads(run_path.read_text(encoding="utf-8"))
     assert run_payload["model_stats"]["parameter_count"] > 0
     assert "torch_version" in run_payload["system"]
+    assert run_payload["training_config"]["tokenizer_name"] == "byte"
 
     resumed_config = TrainingConfig(
         run_name="tokenized_dev",

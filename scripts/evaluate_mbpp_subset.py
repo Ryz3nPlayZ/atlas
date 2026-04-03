@@ -18,7 +18,7 @@ if str(SRC) not in sys.path:
 
 from ace_atlas.config import ACEAtlasConfig
 from ace_atlas.experiment import build_model, count_parameters, format_parameter_count
-from ace_atlas.tokenizer.byte_level import ByteTokenizer
+from ace_atlas.tokenizer.factory import build_tokenizer, build_tokenizer_from_training_config
 from code_eval_utils import normalize_body_completion, repair_body_completion, trim_completion
 
 
@@ -30,6 +30,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-new-tokens", type=int, default=256)
     parser.add_argument("--timeout-sec", type=float, default=5.0)
     parser.add_argument("--syntax-repair", action="store_true")
+    parser.add_argument("--tokenizer-name", type=str, default=None)
+    parser.add_argument("--tokenizer-path", type=Path, default=None)
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
@@ -80,11 +82,12 @@ def extract_starter_code(reference_code: str) -> str:
 
 def greedy_generate(
     model: torch.nn.Module,
+    tokenizer,
     prompt: str,
     device: torch.device,
     max_new_tokens: int,
 ) -> tuple[str, int, float]:
-    token_ids = list(prompt.encode("utf-8"))
+    token_ids = tokenizer.encode(prompt, add_eos=False)
     generated = list(token_ids)
     segment_ids = [0] * len(token_ids)
     start = time.perf_counter()
@@ -99,10 +102,10 @@ def greedy_generate(
             next_token = int(torch.argmax(output.logits[0, -1]).item())
             generated.append(next_token)
             segment_ids.append(1)
-            if next_token == ByteTokenizer.eos_token_id:
+            if next_token == tokenizer.eos_token_id:
                 break
     elapsed = time.perf_counter() - start
-    completion = ByteTokenizer().decode(generated[len(token_ids) :])
+    completion = tokenizer.decode(generated[len(token_ids) :])
     return trim_completion(completion), max(0, len(generated) - len(token_ids)), elapsed
 
 
@@ -150,6 +153,12 @@ def main() -> None:
     payload = torch.load(args.checkpoint, map_location=device)
     config = ACEAtlasConfig.from_dict(payload["model_config"])
     model_name = payload["model_name"]
+    training_config = payload.get("training_config")
+    tokenizer = (
+        build_tokenizer(args.tokenizer_name, args.tokenizer_path)
+        if args.tokenizer_name is not None
+        else build_tokenizer_from_training_config(training_config)
+    )
     model = build_model(model_name, config).to(device)
     model.load_state_dict(payload["model_state_dict"])
     model.eval()
@@ -167,6 +176,7 @@ def main() -> None:
             torch.cuda.reset_peak_memory_stats(device)
         completion, generated_tokens, elapsed = greedy_generate(
             model=model,
+            tokenizer=tokenizer,
             prompt=prompt,
             device=device,
             max_new_tokens=args.max_new_tokens,
@@ -217,6 +227,8 @@ def main() -> None:
             "max_new_tokens": args.max_new_tokens,
             "timeout_sec": args.timeout_sec,
             "syntax_repair": args.syntax_repair,
+            "tokenizer_name": tokenizer.name,
+            "tokenizer_path": getattr(tokenizer, "model_path", None),
         },
         "tasks": len(results),
         "passed": passed_count,
