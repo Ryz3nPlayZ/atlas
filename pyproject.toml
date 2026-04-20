@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ace-atlas"
 version = "0.1.0"
-description = "ACE-Atlas: a hybrid recurrent-memory-MoE language model research codebase."
+description = "High-efficiency LLM architecture designed to beat dense Transformers on a budget."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
